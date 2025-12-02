@@ -1,0 +1,26 @@
+# Core dependencies
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+playwright>=1.40.0
+
+# Optional: For real Gemini API
+google-generativeai>=0.3.0
+google-cloud-storage
+
+# Image processing (if needed)
+Pillow>=10.0.0
+
+# PDF export (optional)
+fpdf2>=2.7.0
+Flask==3.0.0
+requests
+beautifulsoup4
+selenium
+pdfplumber
+yake
+python-dateutil
+gunicorn
+playwright
+google-generativeai
+Pillow
+fpdf2

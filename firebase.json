@@ -1,0 +1,28 @@
+{
+  "hosting": {
+    "public": "frontend",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/analyze",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "/reports/**",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "/reports/screenshots/**",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "/api/**",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
