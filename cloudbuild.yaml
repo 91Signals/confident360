@@ -2,31 +2,29 @@ options:
   default_logs_bucket_behavior: REGIONAL_USER_OWNED_BUCKET
 
 steps:
-  # Enable BuildKit + use caching
-  - name: "gcr.io/cloud-builders/docker:buildkit"
-    entrypoint: "bash"
+  # Step 0 – Start BuildKit daemon
+  - name: "moby/buildkit:latest"
+    id: "build"
+    entrypoint: "buildctl-daemonless.sh"
     args:
-      - "-c"
-      - |
-        export DOCKER_BUILDKIT=1
-        docker build \
-          --cache-from=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:latest \
-          --cache-to=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:cache,mode=max \
-          -t gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA \
-          -t gcr.io/$PROJECT_ID/portfolio-backend:latest \
-          ./backend
+      - "build"
+      - "--frontend=dockerfile.v0"
+      - "--local=context=backend"
+      - "--local=dockerfile=backend"
+      - "--output=type=image,name=gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA,push=true"
+      - "--export-cache=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:cache,mode=max"
+      - "--import-cache=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:cache"
 
-  # Push main tag
+  # Tag latest
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"]
+    args:
+      ["tag",
+       "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA",
+       "gcr.io/$PROJECT_ID/portfolio-backend:latest"]
 
-  # Push latest tag
+  # Push latest
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:latest"]
-
-  # Push cache metadata
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:cache"]
 
   # Deploy
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
