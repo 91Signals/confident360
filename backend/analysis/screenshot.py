@@ -74,7 +74,7 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots"):
     def compress_image_to_target_size(input_path, target_size=3*1024*1024):
         # Print initial size
         initial_size = os.path.getsize(input_path)
-        print(f"🖼️ the Initial screenshot size: {initial_size/1024/1024:.2f} MB")
+        print(f"🖼️ Initial screenshot size: {initial_size/1024/1024:.2f} MB")
         # Compress PNG to JPEG if needed, reduce quality until < target_size
         img = Image.open(input_path)
         quality = 95
