@@ -2,33 +2,33 @@ options:
   default_logs_bucket_behavior: REGIONAL_USER_OWNED_BUCKET
 
 steps:
-  # Build image using Docker cache
-  - name: "gcr.io/cloud-builders/docker"
+  # Enable BuildKit + use caching
+  - name: "gcr.io/cloud-builders/docker:buildkit"
+    entrypoint: "bash"
     args:
-      [
-        "build",
-        "--cache-from=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:latest",
-        "--cache-to=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:cache,mode=max",
-        "-t",
-        "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA",
-        "-t",
-        "gcr.io/$PROJECT_ID/portfolio-backend:latest",
-        "./backend"
-      ]
+      - "-c"
+      - |
+        export DOCKER_BUILDKIT=1
+        docker build \
+          --cache-from=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:latest \
+          --cache-to=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:cache,mode=max \
+          -t gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA \
+          -t gcr.io/$PROJECT_ID/portfolio-backend:latest \
+          ./backend
 
   # Push main tag
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"]
 
-  # Push latest tag (used as cache source next build)
+  # Push latest tag
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:latest"]
 
-  # Push cache metadata layer
+  # Push cache metadata
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:cache"]
 
-  # Deploy to Cloud Run
+  # Deploy
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "bash"
     args:
