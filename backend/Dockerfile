@@ -4,7 +4,7 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install all Playwright system deps for Chromium on Debian 12 (Trixie/Bookworm)
+# Install all Playwright deps (cached layer)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates \
     build-essential \
@@ -14,26 +14,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
+# Install pip dependencies (cached unless requirements.txt changes)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright + Chromium
-RUN pip install playwright \
-    && playwright install chromium \
-    && playwright install-deps
+# Install Playwright + Chromium (cached)
+RUN pip install playwright && \
+    playwright install chromium && \
+    playwright install-deps
 
-# Copy backend
+# Copy backend code (only this layer rebuilds while coding)
 COPY . .
 
 ENV PORT=8080
 EXPOSE 8080
 
 # Playwright requires SINGLE worker
-# CMD ["gunicorn", "-w", "4", "-t", "600", "-b", "0.0.0.0:8080", "app:app"]
-
 CMD ["gunicorn", "-w", "1", "-t", "3600", "-b", "0.0.0.0:8080", "--chdir", "/app", "app:app"]
-# Start the Flask application using Gunicorn
-# CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "--chdir", "/app", "app:app"]
-

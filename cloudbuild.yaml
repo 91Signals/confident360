@@ -1,11 +1,24 @@
 steps:
-  # Build Docker image for backend
+  # Build image using Docker cache
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA', './backend']
+    args:
+      [
+        "build",
+        "-t",
+        "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA",
+        "-t",
+        "gcr.io/$PROJECT_ID/portfolio-backend:latest",
+        "./backend"
+      ]
 
-  # Push image (the docker builder automatically pushes images when using 'gcr.io/$PROJECT_ID')
+  # Push both tags
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"]
 
-  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:latest"]
+
+  # Deploy the latest version
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -13,9 +26,12 @@ steps:
       - |
         gcloud run deploy portfolio-backend \
           --image gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA \
-          --region us-central1 --platform managed --allow-unauthenticated
+          --region us-central1 \
+          --platform managed \
+          --allow-unauthenticated
 
 images:
-  - 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
+  - "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"
+  - "gcr.io/$PROJECT_ID/portfolio-backend:latest"
 
-timeout: '1200s'
+timeout: "1200s"
