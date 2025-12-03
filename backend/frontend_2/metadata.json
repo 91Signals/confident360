@@ -1,0 +1,7 @@
+{
+  "name": "confi360 -v2",
+  "description": "A dark-themed, AI-powered dashboard for analyzing and scoring UX design portfolios.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
