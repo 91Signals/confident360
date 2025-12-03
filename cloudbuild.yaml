@@ -1,9 +1,12 @@
 steps:
-  # Build image using Docker cache
+
+  # Build image using Docker cache (with cache mounts)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
         "build",
+        "--cache-from=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:latest",
+        "--cache-to=type=inline",
         "-t",
         "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA",
         "-t",

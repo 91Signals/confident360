@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pip dependencies (cached unless requirements.txt changes)
-COPY requirements.txt .
+
+# Copy only requirements first for cache efficiency
+COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
@@ -24,7 +25,7 @@ RUN pip install playwright && \
     playwright install chromium && \
     playwright install-deps
 
-# Copy backend code (only this layer rebuilds while coding)
+# Copy backend code (this layer changes most frequently)
 COPY . .
 
 ENV PORT=8080
