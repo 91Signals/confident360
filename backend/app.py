@@ -107,7 +107,7 @@ def analyze():
 
     # Run pipeline
     try:
-        run_analysis_from_flask(portfolio_url, resume_path)
+        result = run_analysis_from_flask(portfolio_url, resume_path)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -120,11 +120,15 @@ def analyze():
             final_url = compress_and_upload_screenshot(local_path, gcs_path)
             uploaded_screenshots.append(final_url)
 
+    # Extract time report URL from result if available
+    time_report_url = result.get('time_report_url') if result and isinstance(result, dict) else None
+    
     return jsonify({
         "message": "analysis_complete",
         "report_id": report_id,
         "resume_pdf_url": gcs_pdf_url,
-        "uploaded_screenshots": uploaded_screenshots
+        "uploaded_screenshots": uploaded_screenshots,
+        "time_report_url": time_report_url
     })
 
 

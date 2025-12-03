@@ -19,32 +19,47 @@ def create_project_slug(url):
     return slug[:150]
 
 
-def analyze_projects(project_links, parent_url):
+def analyze_projects(project_links, parent_url, gcs_folder):
     """
     Analyzes each project page using:
       - HTML scraping
       - Screenshot capture
       - Gemini case-study scoring prompt
+    
+    Returns:
+        tuple: (count, project_timings) where project_timings is a list of timing dicts
     """
+    import time
     count = 0
+    project_timings = []
     print(f"[DEBUG] Starting analysis of {len(project_links)} project links for parent: {parent_url}")
 
-    # Use a unique folder for this analysis (parent_url slug + timestamp)
-    from datetime import datetime
-    parent_slug = create_project_slug(parent_url)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    gcs_folder = f"{parent_slug}_{timestamp}/projects/"
+    # Use provided GCS folder
+    gcs_project_folder = gcs_folder + "projects/"
 
     for idx, link in enumerate(project_links, 1):
         print(f"\n  [DEBUG] [{idx}/{len(project_links)}] Analyzing project: {link}")
+        project_start_time = time.perf_counter()
+        project_timing = {
+            "project_url": link,
+            "project_name": link.split('/')[-1] or link,
+            "index": idx
+        }
+        
         try:
+            # Scraping
             print(f"  [DEBUG] Scraping project page: {link}")
+            scrape_start = time.perf_counter()
             scraped_data = scrape_project_page(link)
-            print(f"  [DEBUG] Scraping complete for: {link}")
+            project_timing['scraping_seconds'] = round(time.perf_counter() - scrape_start, 2)
+            print(f"  [DEBUG] Scraping complete for: {link} ({project_timing['scraping_seconds']:.2f}s)")
 
+            # Screenshot
             print(f"  [DEBUG] Capturing screenshot for: {link}")
+            screenshot_start = time.perf_counter()
             screenshot_path = capture_screenshot(link)
-            print(f"  [DEBUG] Screenshot saved at: {screenshot_path}")
+            project_timing['screenshot_seconds'] = round(time.perf_counter() - screenshot_start, 2)
+            print(f"  [DEBUG] Screenshot saved at: {screenshot_path} ({project_timing['screenshot_seconds']:.2f}s)")
 
             print(f"  [DEBUG] Preparing Gemini prompt for: {link}")
             # --------------------------------------
@@ -324,19 +339,24 @@ Use EXACTLY this structure:
 
             try:
                 print(f"  [DEBUG] Sending to Gemini for analysis: {link}")
+                gemini_start = time.perf_counter()
                 analysis = analyze_content(prompt, {
                     "scraped_data": scraped_data,
                     "screenshot": screenshot_path
                 })
-                print(f"  [DEBUG] Gemini analysis complete for: {link}")
+                project_timing['gemini_seconds'] = round(time.perf_counter() - gemini_start, 2)
+                print(f"  [DEBUG] Gemini analysis complete for: {link} ({project_timing['gemini_seconds']:.2f}s)")
             except Exception as e:
                 print(f"    ❌ Gemini failed: {e}")
+                project_timing['error'] = str(e)
+                project_timing['status'] = 'failed'
+                project_timings.append(project_timing)
                 continue
 
             # --------------------------------------
             # SAVE REPORT
             # --------------------------------------
-
+            save_start = time.perf_counter()
             slug = create_project_slug(link)
             report_path = f"backend/reports/{slug}.json"
 
@@ -354,14 +374,24 @@ Use EXACTLY this structure:
               json.dump(report, f, indent=2, ensure_ascii=False)
 
             # Upload to GCS
-            gcs_path = gcs_folder + os.path.basename(report_path)
+            gcs_path = gcs_project_folder + os.path.basename(report_path)
             gcs_url = upload_file_to_gcs(report_path, gcs_path)
-            print(f"    ✅ Uploaded project report to GCS: {gcs_url}")
+            project_timing['save_upload_seconds'] = round(time.perf_counter() - save_start, 2)
+            project_timing['total_seconds'] = round(time.perf_counter() - project_start_time, 2)
+            project_timing['status'] = 'success'
+            project_timing['report_url'] = gcs_url
+            print(f"    ✅ Uploaded project report to GCS: {gcs_url} (Total: {project_timing['total_seconds']:.2f}s)")
+            
+            project_timings.append(project_timing)
             count += 1
 
         except Exception as e:
             print(f"    ❌ Error analyzing {link}: {e}")
+            project_timing['error'] = str(e)
+            project_timing['status'] = 'failed'
+            project_timing['total_seconds'] = round(time.perf_counter() - project_start_time, 2)
+            project_timings.append(project_timing)
             continue
 
     print(f"[DEBUG] Finished analyzing all project links. Total successful: {count}")
-    return count
+    return count, project_timings

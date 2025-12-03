@@ -28,11 +28,20 @@ def extract_portfolio(url, platform):
             "structured_content": {...},
             "analysis": {...},
             "project_links": [...],
-            "project_reports_count": 0
+            "project_reports_count": 0,
+            "time_report": {...}
         }
     """
     import time
-    timings = {}
+    from datetime import datetime
+    
+    # Comprehensive time tracking
+    timings = {
+        "pipeline_start": datetime.now().isoformat(),
+        "portfolio_url": url,
+        "platform": platform
+    }
+    pipeline_start_time = time.perf_counter()
 
     print(f"📥 Extracting portfolio data from {platform}...")
     stage_start = time.perf_counter()
@@ -47,8 +56,8 @@ def extract_portfolio(url, platform):
       scraped_data = notion.extract(url)
     else:
       scraped_data = normal_scraper.extract(url)
-    timings['scraping'] = time.perf_counter() - stage_start
-    print(f"⏱️ Scraping completed in {timings['scraping']:.2f}s")
+    timings['scraping_time_seconds'] = round(time.perf_counter() - stage_start, 2)
+    print(f"⏱️ Scraping completed in {timings['scraping_time_seconds']:.2f}s")
 
     if not scraped_data:
       return {"success": False, "error": "Failed to scrape portfolio"}
@@ -59,19 +68,19 @@ def extract_portfolio(url, platform):
     # --------------------------
     # 2. SCREENSHOT STAGE (if needed)
     # --------------------------
-    screenshot_time = None
     if hasattr(scraped_data, 'screenshot_path') or scraped_data.get('screenshot_path'):
       shot_start = time.perf_counter()
       # If screenshot logic is triggered here, add timing
-      screenshot_time = time.perf_counter() - shot_start
-      timings['screenshot'] = screenshot_time
-      print(f"⏱️ Screenshot taken in {screenshot_time:.2f}s")
+      timings['screenshot_time_seconds'] = round(time.perf_counter() - shot_start, 2)
+      print(f"⏱️ Screenshot taken in {timings['screenshot_time_seconds']:.2f}s")
+    else:
+      timings['screenshot_time_seconds'] = 0
 
     # --------------------------
     # 3. RUN GEMINI MAIN-PAGE PROMPT
     # --------------------------
-    gemini_start = time.perf_counter()
     print("🧠 Analyzing portfolio with Gemini...")
+    gemini_start = time.perf_counter()
 
     prompt = f"""
 You are an expert UI/UX portfolio analyzer.
@@ -137,40 +146,39 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
 
     try:
       gemini_response = analyze_content(prompt, scraped_data)
-      timings['gemini'] = time.perf_counter() - gemini_start
-      print(f"✅ Gemini analysis successful in {timings['gemini']:.2f}s\n")
+      timings['gemini_portfolio_analysis_seconds'] = round(time.perf_counter() - gemini_start, 2)
+      print(f"✅ Gemini analysis successful in {timings['gemini_portfolio_analysis_seconds']:.2f}s\n")
       print("\n\n",gemini_response,"\n\n")
     except Exception as e:
       print(f"❌ Gemini failed: {e}")
-      return {"success": False, "error": "Gemini main analysis failed"}
+      return {"success": False, "error": "Gemini main analysis failed", "time_report": timings}
 
     # --------------------------
     # 3. SAVE MAIN REPORT
     # --------------------------
+    save_start = time.perf_counter()
     filename = get_clean_filename(url)
     main_json_path = f"backend/reports/{filename}_main_portfolio.json"
 
     with open(main_json_path, "w", encoding="utf-8") as f:
       json.dump(gemini_response, f, indent=2, ensure_ascii=False)
 
-
     print(f"📁 Main portfolio report saved: {main_json_path}\n")
-    timings['total'] = sum(timings.values())
-    print(f"⏱️ Stage timings: {timings}")
 
     # Upload main report to GCS
     from utils.gcs_utils import upload_file_to_gcs
-    from datetime import datetime
     parent_slug = get_clean_filename(url)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     gcs_folder = f"{parent_slug}_{timestamp}/"
     gcs_main_path = gcs_folder + os.path.basename(main_json_path)
     gcs_main_url = upload_file_to_gcs(main_json_path, gcs_main_path)
+    timings['save_and_upload_main_report_seconds'] = round(time.perf_counter() - save_start, 2)
     print(f"[GCS] Uploaded main report to: {gcs_main_url}")
 
     # --------------------------
     # 4. EXTRACT PROJECT LINKS (NEW LOGIC)
     # --------------------------
+    extract_start = time.perf_counter()
     print("🔗 Extracting project links from structured_content.projects...")
 
     structured = gemini_response.get("structured_content", {})
@@ -182,6 +190,8 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     ]
 
     project_links = list(dict.fromkeys(project_links))  # remove duplicates
+    timings['project_links_extraction_seconds'] = round(time.perf_counter() - extract_start, 2)
+    timings['total_project_links_found'] = len(project_links)
     print(f"✅ Found {len(project_links)} project links\n")
     print(project_links)
     print("\n\n")
@@ -190,16 +200,81 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     # 5. ANALYZE EACH PROJECT PAGE
     # --------------------------
     project_reports_count = 0
+    project_timings = []
 
     if project_links:
         print("📊 Analyzing individual projects...\n")
-        project_reports_count = casestudies.analyze_projects(project_links, url)
+        projects_start = time.perf_counter()
+        project_reports_count, project_timings = casestudies.analyze_projects(project_links, url, gcs_folder)
+        timings['total_project_analysis_seconds'] = round(time.perf_counter() - projects_start, 2)
+        timings['projects_analyzed'] = project_reports_count
+        timings['per_project_timings'] = project_timings
         print(f"🎉 Completed {project_reports_count} project analyses\n")
     else:
         print("⚠️ No project links found to analyze\n")
+        timings['total_project_analysis_seconds'] = 0
+        timings['projects_analyzed'] = 0
+        timings['per_project_timings'] = []
 
     # --------------------------
-    # 6. RETURN FINAL RESULT
+    # 6. CALCULATE TOTAL TIME & GENERATE REPORT
+    # --------------------------
+    total_pipeline_time = time.perf_counter() - pipeline_start_time
+    timings['total_pipeline_time_seconds'] = round(total_pipeline_time, 2)
+    timings['pipeline_end'] = datetime.now().isoformat()
+    
+    # Add user identifier from URL
+    timings['user_identifier'] = get_clean_filename(url)
+    
+    # Print comprehensive time report
+    print("\n" + "="*70)
+    print("⏱️  COMPREHENSIVE TIME REPORT")
+    print("="*70)
+    print(f"Portfolio URL: {url}")
+    print(f"Platform: {platform}")
+    print(f"User: {timings['user_identifier']}")
+    print(f"Started: {timings['pipeline_start']}")
+    print(f"Completed: {timings['pipeline_end']}")
+    print("-"*70)
+    print(f"1. Scraping Time:                {timings['scraping_time_seconds']:.2f}s")
+    print(f"2. Screenshot Time:              {timings['screenshot_time_seconds']:.2f}s")
+    print(f"3. Gemini Portfolio Analysis:    {timings['gemini_portfolio_analysis_seconds']:.2f}s")
+    print(f"4. Save & Upload Main Report:    {timings['save_and_upload_main_report_seconds']:.2f}s")
+    print(f"5. Extract Project Links:        {timings['project_links_extraction_seconds']:.2f}s")
+    print(f"6. Total Project Analysis:       {timings['total_project_analysis_seconds']:.2f}s")
+    print(f"   - Projects Found:             {timings['total_project_links_found']}")
+    print(f"   - Projects Analyzed:          {timings['projects_analyzed']}")
+    
+    if project_timings:
+        print("\n   Per-Project Breakdown:")
+        for i, pt in enumerate(project_timings, 1):
+            print(f"   {i}. {pt['project_name'][:50]}")
+            print(f"      - Scraping:    {pt['scraping_seconds']:.2f}s")
+            print(f"      - Screenshot:  {pt['screenshot_seconds']:.2f}s")
+            print(f"      - Gemini:      {pt['gemini_seconds']:.2f}s")
+            print(f"      - Save/Upload: {pt['save_upload_seconds']:.2f}s")
+            print(f"      - Total:       {pt['total_seconds']:.2f}s")
+    
+    print("-"*70)
+    print(f"🏁 TOTAL PIPELINE TIME:          {timings['total_pipeline_time_seconds']:.2f}s")
+    print(f"   ({timings['total_pipeline_time_seconds']/60:.2f} minutes)")
+    print("="*70 + "\n")
+    
+    # --------------------------
+    # 7. SAVE TIME REPORT TO GCS
+    # --------------------------
+    time_report_filename = f"{timings['user_identifier']}_time_report.json"
+    time_report_path = f"backend/reports/{time_report_filename}"
+    
+    with open(time_report_path, "w", encoding="utf-8") as f:
+        json.dump(timings, f, indent=2, ensure_ascii=False)
+    
+    gcs_time_report_path = gcs_folder + time_report_filename
+    gcs_time_report_url = upload_file_to_gcs(time_report_path, gcs_time_report_path)
+    print(f"📊 Time report saved to GCS: {gcs_time_report_url}\n")
+
+    # --------------------------
+    # 8. RETURN FINAL RESULT
     # --------------------------
     return {
       "success": True,
@@ -207,5 +282,7 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
       "structured_content": gemini_response.get("structured_content", {}),
       "analysis": gemini_response.get("analysis", {}),
       "project_links": project_links,
-      "project_reports_count": project_reports_count
+      "project_reports_count": project_reports_count,
+      "time_report": timings,
+      "time_report_url": gcs_time_report_url
     }
