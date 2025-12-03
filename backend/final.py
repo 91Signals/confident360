@@ -31,30 +31,46 @@ def extract_portfolio(url, platform):
             "project_reports_count": 0
         }
     """
-    print(f"📥 Extracting portfolio data from {platform}...")
+    import time
+    timings = {}
 
+    print(f"📥 Extracting portfolio data from {platform}...")
+    stage_start = time.perf_counter()
     # --------------------------
     # 1. SCRAPE BASED ON PLATFORM
     # --------------------------
     if platform == "behance":
-        scraped_data = behance.extract(url)
+      scraped_data = behance.extract(url)
     elif platform == "designfolio":
-        scraped_data = designfolio.extract(url)
+      scraped_data = designfolio.extract(url)
     elif platform == "notion":
-        scraped_data = notion.extract(url)
+      scraped_data = notion.extract(url)
     else:
-        scraped_data = normal_scraper.extract(url)
+      scraped_data = normal_scraper.extract(url)
+    timings['scraping'] = time.perf_counter() - stage_start
+    print(f"⏱️ Scraping completed in {timings['scraping']:.2f}s")
 
     if not scraped_data:
-        return {"success": False, "error": "Failed to scrape portfolio"}
+      return {"success": False, "error": "Failed to scrape portfolio"}
 
     print("✅ Portfolio data extracted\n")
     print("SCRAPED_DATA : \n\n",scraped_data,"\n\n")
 
     # --------------------------
-    # 2. RUN GEMINI MAIN-PAGE PROMPT
+    # 2. SCREENSHOT STAGE (if needed)
     # --------------------------
+    screenshot_time = None
+    if hasattr(scraped_data, 'screenshot_path') or scraped_data.get('screenshot_path'):
+      shot_start = time.perf_counter()
+      # If screenshot logic is triggered here, add timing
+      screenshot_time = time.perf_counter() - shot_start
+      timings['screenshot'] = screenshot_time
+      print(f"⏱️ Screenshot taken in {screenshot_time:.2f}s")
 
+    # --------------------------
+    # 3. RUN GEMINI MAIN-PAGE PROMPT
+    # --------------------------
+    gemini_start = time.perf_counter()
     print("🧠 Analyzing portfolio with Gemini...")
 
     prompt = f"""
@@ -118,13 +134,15 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
 }}
 """
 
+
     try:
-        gemini_response = analyze_content(prompt, scraped_data)
-        print("✅ Gemini analysis successful\n")
-        print("\n\n",gemini_response,"\n\n")
+      gemini_response = analyze_content(prompt, scraped_data)
+      timings['gemini'] = time.perf_counter() - gemini_start
+      print(f"✅ Gemini analysis successful in {timings['gemini']:.2f}s\n")
+      print("\n\n",gemini_response,"\n\n")
     except Exception as e:
-        print(f"❌ Gemini failed: {e}")
-        return {"success": False, "error": "Gemini main analysis failed"}
+      print(f"❌ Gemini failed: {e}")
+      return {"success": False, "error": "Gemini main analysis failed"}
 
     # --------------------------
     # 3. SAVE MAIN REPORT
@@ -135,7 +153,10 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     with open(main_json_path, "w", encoding="utf-8") as f:
       json.dump(gemini_response, f, indent=2, ensure_ascii=False)
 
+
     print(f"📁 Main portfolio report saved: {main_json_path}\n")
+    timings['total'] = sum(timings.values())
+    print(f"⏱️ Stage timings: {timings}")
 
     # Upload main report to GCS
     from utils.gcs_utils import upload_file_to_gcs

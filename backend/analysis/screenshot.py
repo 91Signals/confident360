@@ -72,6 +72,9 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots"):
     is_notion = "notion.so" in url or "notion.site" in url
 
     def compress_image_to_target_size(input_path, target_size=3*1024*1024):
+        # Print initial size
+        initial_size = os.path.getsize(input_path)
+        print(f"🖼️ Initial screenshot size: {initial_size/1024/1024:.2f} MB")
         # Compress PNG to JPEG if needed, reduce quality until < target_size
         img = Image.open(input_path)
         quality = 95
@@ -87,7 +90,11 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots"):
             quality -= 5
         with open(input_path, "wb") as f:
             f.write(buffer.getvalue())
-        return size
+        final_size = size
+        percent_reduced = 100 * (initial_size - final_size) / initial_size if initial_size > 0 else 0
+        print(f"🖼️ Screenshot size after compression: {final_size/1024/1024:.2f} MB")
+        print(f"🔻 Size reduced: {percent_reduced:.1f}%")
+        return final_size
 
     def file_hash(path):
         h = hashlib.sha256()
