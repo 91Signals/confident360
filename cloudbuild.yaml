@@ -1,12 +1,11 @@
 steps:
-
-  # Build image using Docker cache (with cache mounts)
-  - name: 'gcr.io/cloud-builders/docker'
+  # Build image using Docker cache
+  - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
         "--cache-from=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:latest",
-        "--cache-to=type=inline",
+        "--cache-to=type=registry,ref=gcr.io/$PROJECT_ID/portfolio-backend:cache,mode=max",
         "-t",
         "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA",
         "-t",
@@ -14,18 +13,23 @@ steps:
         "./backend"
       ]
 
-  # Push both tags
-  - name: 'gcr.io/cloud-builders/docker'
+  # Push main tag
+  - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"]
 
-  - name: 'gcr.io/cloud-builders/docker'
+  # Push latest tag (used as cache source next time)
+  - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:latest"]
 
-  # Deploy the latest version
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  # Push cache metadata layer
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:cache"]
+
+  # Deploy
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         gcloud run deploy portfolio-backend \
           --image gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA \
@@ -36,5 +40,6 @@ steps:
 images:
   - "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"
   - "gcr.io/$PROJECT_ID/portfolio-backend:latest"
+  - "gcr.io/$PROJECT_ID/portfolio-backend:cache"
 
 timeout: "1200s"
