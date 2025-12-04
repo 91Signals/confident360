@@ -1,10 +1,15 @@
 {
   "hosting": {
-    "public": "frontend",
+    "public": "backend/frontend_2/frontend-next/out",
+    "cleanUrls": true,
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
         "source": "/analyze",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "/reports",
         "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
       },
       {

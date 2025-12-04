@@ -36,6 +36,9 @@ RUN pip install --upgrade pip && \
 # ============================================
 FROM python-deps AS playwright-install
 
+# Set Playwright browsers path globally
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Install Playwright and Chromium
 RUN pip install playwright && \
     playwright install chromium && \

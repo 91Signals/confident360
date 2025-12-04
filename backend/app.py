@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import os
 import json
 import uuid
@@ -29,6 +30,7 @@ app = Flask(
     template_folder=os.path.join(BACKEND_DIR, "templates"),
     static_folder=os.path.join(BACKEND_DIR, "static")
 )
+CORS(app)
 
 # ---------------------------------------
 # IMAGE OPTIMIZATION (Screenshot Compression)
@@ -138,9 +140,13 @@ def analyze():
 
 @app.route("/reports")
 def get_reports():
-
+    report_id_param = request.args.get('report_id')
     bucket = storage_client.bucket(BUCKET_NAME)
-    blobs = list(bucket.list_blobs())
+    
+    if report_id_param:
+        blobs = list(bucket.list_blobs(prefix=f"{report_id_param}/"))
+    else:
+        blobs = list(bucket.list_blobs())
 
     reports = {}
 
@@ -154,7 +160,7 @@ def get_reports():
         if report_id not in reports:
             reports[report_id] = {
                 "id": report_id,
-                "json": None,
+                "jsons": [],
                 "screenshots": []
             }
 
@@ -162,7 +168,7 @@ def get_reports():
         if blob.name.endswith(".json"):
             try:
                 content = blob.download_as_text()
-                reports[report_id]["json"] = json.loads(content)
+                reports[report_id]["jsons"].append(json.loads(content))
             except Exception as e:
                 print("Error parsing JSON:", blob.name, e)
 
@@ -174,50 +180,50 @@ def get_reports():
     final_output = []
 
     for rep in reports.values():
-        raw = rep["json"]
-        if not raw:
-            continue
-
         ss = rep["screenshots"]
+        
+        for raw in rep["jsons"]:
+            if not raw:
+                continue
 
-        # Portfolio Report
-        if "structured_content" in raw:
-            sc = raw["structured_content"]
-            analysis = raw["analysis"]
+            # Portfolio Report
+            if "structured_content" in raw:
+                sc = raw["structured_content"]
+                analysis = raw["analysis"]
 
-            final_output.append({
-                "id": rep["id"],
-                "type": "portfolio",
-                "url": raw.get("url", ""),
-                "hero": sc.get("hero"),
-                "about": sc.get("about"),
-                "skills": sc.get("skills", []),
-                "projects": sc.get("projects", []),
-                "contact": sc.get("contact", {}),
-                "links": sc.get("all_links", []),
+                final_output.append({
+                    "id": rep["id"],
+                    "type": "portfolio",
+                    "url": raw.get("url", ""),
+                    "hero": sc.get("hero"),
+                    "about": sc.get("about"),
+                    "skills": sc.get("skills", []),
+                    "projects": sc.get("projects", []),
+                    "contact": sc.get("contact", {}),
+                    "links": sc.get("all_links", []),
 
-                "overall_feedback": analysis.get("overall_feedback", ""),
-                "sections": analysis.get("section_wise", []),
-                "screenshots": ss
-            })
+                    "overall_feedback": analysis.get("overall_feedback", ""),
+                    "sections": analysis.get("section_wise", []),
+                    "screenshots": ss
+                })
 
-        # Case Study Report
-        elif "scraped_data" in raw and "analysis" in raw:
-            analysis = raw["analysis"]
+            # Case Study Report
+            elif "scraped_data" in raw and "analysis" in raw:
+                analysis = raw["analysis"]
 
-            final_output.append({
-                "id": rep["id"],
-                "type": "case_study",
-                "url": raw.get("url", ""),
-                "title": raw["scraped_data"].get("title", ""),
-                "overallScore": analysis.get("overall_score", 0),
-                "phaseScores": analysis.get("phase_scores", []),
-                "summary": analysis.get("summary", ""),
-                "improvements": analysis.get("improvements", []),
-                "verdict": analysis.get("verdict", ""),
-                "ux_keywords": analysis.get("ux_keywords", []),
-                "screenshots": ss
-            })
+                final_output.append({
+                    "id": rep["id"],
+                    "type": "case_study",
+                    "url": raw.get("url", ""),
+                    "title": raw["scraped_data"].get("title", ""),
+                    "overallScore": analysis.get("overall_score", 0),
+                    "phaseScores": analysis.get("phase_scores", []),
+                    "summary": analysis.get("summary", ""),
+                    "improvements": analysis.get("improvements", []),
+                    "verdict": analysis.get("verdict", ""),
+                    "ux_keywords": analysis.get("ux_keywords", []),
+                    "screenshots": ss
+                })
 
     return jsonify(final_output)
 

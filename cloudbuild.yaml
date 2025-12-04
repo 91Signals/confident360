@@ -6,17 +6,21 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  # Build with kaniko for better caching
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  # Build with Docker
+  - name: 'gcr.io/cloud-builders/docker'
     args:
-      - '--destination=gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
-      - '--destination=gcr.io/$PROJECT_ID/portfolio-backend:latest'
-      - '--cache=true'
-      - '--cache-ttl=168h'
-      - '--cache-repo=gcr.io/$PROJECT_ID/portfolio-backend-cache'
-      - '--context=dir:///workspace/backend'
-      - '--dockerfile=Dockerfile'
-      - '--compressed-caching=false'
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/portfolio-backend:latest'
+      - './backend'
+
+  # Push images
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/portfolio-backend:latest']
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -34,7 +38,8 @@ steps:
           --timeout=3600s \
           --max-instances=10 \
           --min-instances=0 \
-          --concurrency=80
+          --concurrency=80 \
+          --set-env-vars=GEMINI_API_KEY=AIzaSyDSsiJ8AzebMg2qv7khpnqWyZFp49W4QJU
 
 images:
   - 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'

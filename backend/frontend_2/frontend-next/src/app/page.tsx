@@ -83,7 +83,7 @@ export default function Home() {
         return;
       }
 
-      router.push('/results');
+      router.push(`/results?report_id=${result.report_id}`);
     } catch (error: any) {
       console.error('Fetch error:', error);
       alert(`An error occurred: ${error.message}`);
