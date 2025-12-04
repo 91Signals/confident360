@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.4
-
 # ============================================
 # Stage 1: Base image with system dependencies
 # ============================================
@@ -8,31 +6,29 @@ FROM python:3.11-slim AS base
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV PIP_NO_CACHE_DIR=1
+ENV PIP_NO_CACHE_DIR=0
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies in one layer
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies in one layer with cleanup
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates \
     libnss3 libxss1 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 \
     libpango-1.0-0 libgbm1 libasound2 libatspi2.0-0 libxshmfence1 \
     fonts-liberation xauth xvfb \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # ============================================
 # Stage 2: Python dependencies
 # ============================================
 FROM base AS python-deps
 
-# Copy only requirements first for better caching
+# Copy only requirements first for better layer caching
 COPY requirements.txt .
 
-# Install Python packages with cache mount
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip && \
+# Install Python packages (pip cache will be in layer)
+RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # ============================================
@@ -40,11 +36,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ============================================
 FROM python-deps AS playwright-install
 
-# Install Playwright and Chromium with cache
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/root/.cache/ms-playwright \
-    pip install playwright && \
-    playwright install chromium --with-deps
+# Install Playwright and Chromium
+RUN pip install playwright && \
+    playwright install chromium && \
+    playwright install-deps chromium
 
 # ============================================
 # Stage 4: Final runtime image
@@ -56,7 +51,7 @@ COPY . .
 
 # Environment variables
 ENV PORT=8080
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 EXPOSE 8080
 

@@ -1,36 +1,24 @@
 options:
   # Use high-performance machine for faster builds
   machineType: 'E2_HIGHCPU_8'
-  # Enable BuildKit for advanced caching
-  env:
-    - 'DOCKER_BUILDKIT=1'
   # Use faster disk
   diskSizeGb: 100
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  # Build with BuildKit and layer caching
-  - name: 'gcr.io/cloud-builders/docker'
+  # Build with kaniko for better caching
+  - name: 'gcr.io/kaniko-project/executor:latest'
     args:
-      - 'build'
-      - '--cache-from=gcr.io/$PROJECT_ID/portfolio-backend:latest'
-      - '--build-arg=BUILDKIT_INLINE_CACHE=1'
-      - '-t=gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
-      - '-t=gcr.io/$PROJECT_ID/portfolio-backend:latest'
-      - './backend'
-    env:
-      - 'DOCKER_BUILDKIT=1'
+      - '--destination=gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
+      - '--destination=gcr.io/$PROJECT_ID/portfolio-backend:latest'
+      - '--cache=true'
+      - '--cache-ttl=168h'
+      - '--cache-repo=gcr.io/$PROJECT_ID/portfolio-backend-cache'
+      - '--context=dir:///workspace/backend'
+      - '--dockerfile=Dockerfile'
+      - '--compressed-caching=false'
 
-  # Push both tags in parallel (Cloud Build handles this)
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA']
-    waitFor: ['-']
-
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/portfolio-backend:latest']
-    waitFor: ['-']
-
-  # Deploy to Cloud Run (wait for both pushes)
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:

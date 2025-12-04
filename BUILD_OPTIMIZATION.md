@@ -6,21 +6,20 @@ The build and deploy process has been optimized from **~6 minutes to under 1 min
 
 ## 🔧 Key Optimizations
 
-### 1. **Multi-Stage Dockerfile with BuildKit**
+### 1. **Multi-Stage Dockerfile**
 - **Multi-stage build**: Separates dependencies from application code
-- **BuildKit cache mounts**: Persistent caching for pip and Playwright
 - **Layer optimization**: Dependencies copied before application code
-- **Cache reuse**: `--cache-from` for pulling previous builds
+- **Kaniko caching**: Automatic layer caching in Google Container Registry
 
 **Benefit**: Dependencies only rebuild when `requirements.txt` changes
 
-### 2. **Cloud Build Enhancements**
+### 2. **Kaniko Builder (Cloud Build)**
 - **High-performance machine**: `E2_HIGHCPU_8` (8 vCPUs)
-- **Parallel push operations**: Both image tags push simultaneously
-- **BuildKit enabled**: Advanced caching and build features
+- **Kaniko caching**: Persistent layer cache in GCR (`portfolio-backend-cache`)
+- **Cache TTL**: 168 hours (7 days) for maximum reuse
 - **Optimized timeout**: Reduced from 1200s to 600s
 
-**Benefit**: 3-4x faster build execution
+**Benefit**: 3-4x faster builds with automatic layer caching
 
 ### 3. **Aggressive File Exclusion**
 - **`.dockerignore`**: Excludes unnecessary files from build context
@@ -45,20 +44,19 @@ The build and deploy process has been optimized from **~6 minutes to under 1 min
 
 ## 📦 Cache Layers
 
-### Docker Build Cache (Multi-Stage)
+### Docker Build Cache (Multi-Stage with Kaniko)
 ```
-Stage 1: Base image (system deps)     → Cached after first build
+Stage 1: Base image (system deps)     → Cached in GCR after first build
 Stage 2: Python dependencies          → Cached unless requirements.txt changes
 Stage 3: Playwright installation      → Cached unless playwright version changes
 Stage 4: Application code              → Rebuilds only on code changes
 ```
 
-### BuildKit Cache Mounts
+### Kaniko Cache Repository
 ```
-/root/.cache/pip                      → Persists pip downloads
-/root/.cache/ms-playwright           → Persists Playwright binaries
-/var/cache/apt                       → Persists apt package cache
-/var/lib/apt                         → Persists apt metadata
+gcr.io/PROJECT_ID/portfolio-backend-cache   → Stores layer cache (7 days TTL)
+gcr.io/PROJECT_ID/portfolio-backend:latest  → Latest image
+gcr.io/PROJECT_ID/portfolio-backend:SHA     → Version-tagged images
 ```
 
 ## 🎯 Expected Build Times
@@ -90,15 +88,18 @@ gcloud builds log <BUILD_ID>
 ### Local build with cache
 ```bash
 cd backend
-DOCKER_BUILDKIT=1 docker build \
-  --cache-from gcr.io/PROJECT_ID/portfolio-backend:latest \
-  --build-arg BUILDKIT_INLINE_CACHE=1 \
-  -t portfolio-backend:local .
+docker build -t portfolio-backend:local .
 ```
 
-### Test build speed
+### Test with kaniko locally (requires Docker)
 ```bash
-time DOCKER_BUILDKIT=1 docker build -t test:latest .
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  gcr.io/kaniko-project/executor:latest \
+  --context=/workspace/backend \
+  --dockerfile=Dockerfile \
+  --no-push \
+  --cache=true
 ```
 
 ## 📊 Cache Verification
@@ -124,10 +125,11 @@ docker builder prune -f
 
 ### Cache not working?
 
-1. **Ensure previous image exists**: `gcr.io/PROJECT_ID/portfolio-backend:latest`
-2. **Check BuildKit version**: Must be 0.8.0+
-3. **Verify cache-from tag**: Must match pushed image
+1. **Ensure cache repo exists**: Kaniko will create it automatically
+2. **Check GCR permissions**: Service account needs storage.admin role
+3. **Verify cache TTL**: Default is 168h (7 days)
 4. **Review layer invalidation**: Changes to early layers invalidate later ones
+5. **Check kaniko logs**: Look for "Using cached layer" messages
 
 ## 🔐 Security Notes
 
