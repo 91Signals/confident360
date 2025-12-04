@@ -92,7 +92,7 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots"):
             f.write(buffer.getvalue())
         final_size = size
         percent_reduced = 100 * (initial_size - final_size) / initial_size if initial_size > 0 else 0
-        print(f"🖼️ Screenshot size after compression: {final_size/1024/1024:.2f} MB")
+        print(f"🖼️ The Screenshot size after compression: {final_size/1024/1024:.2f} MB")
         print(f"🔻 Size reduced: {percent_reduced:.1f}%")
         return final_size
 
