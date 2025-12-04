@@ -57,7 +57,8 @@ def analyze_projects(project_links, parent_url, gcs_folder):
             # Screenshot
             print(f"  [DEBUG] Capturing screenshot for: {link}")
             screenshot_start = time.perf_counter()
-            screenshot_path = capture_screenshot(link)
+            # Pass the gcs_folder to capture_screenshot so it saves in the correct GCS path
+            screenshot_path = capture_screenshot(link, gcs_folder_prefix=gcs_folder)
             project_timing['screenshot_seconds'] = round(time.perf_counter() - screenshot_start, 2)
             print(f"  [DEBUG] Screenshot saved at: {screenshot_path} ({project_timing['screenshot_seconds']:.2f}s)")
 

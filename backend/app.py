@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import json
@@ -109,7 +109,7 @@ def analyze():
 
     # Run pipeline
     try:
-        result = run_analysis_from_flask(portfolio_url, resume_path)
+        result = run_analysis_from_flask(portfolio_url, resume_path, report_id)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -132,6 +132,46 @@ def analyze():
         "uploaded_screenshots": uploaded_screenshots,
         "time_report_url": time_report_url
     })
+
+
+# ---------------------------------------
+# SERVE SCREENSHOTS (PROXY)
+# ---------------------------------------
+
+@app.route("/reports/<report_id>/screenshots/<filename>")
+def serve_screenshot(report_id, filename):
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        # Try to find the file in GCS
+        gcs_path = f"{report_id}/screenshots/{filename}"
+        blob = bucket.blob(gcs_path)
+        
+        if not blob.exists():
+            # Try alternative extension
+            if filename.endswith(".png"):
+                alt_gcs_path = f"{report_id}/screenshots/{filename.replace('.png', '.webp')}"
+                blob = bucket.blob(alt_gcs_path)
+            elif filename.endswith(".webp"):
+                alt_gcs_path = f"{report_id}/screenshots/{filename.replace('.webp', '.png')}"
+                blob = bucket.blob(alt_gcs_path)
+            else:
+                return jsonify({"error": "Screenshot not found"}), 404
+                
+            if blob.exists():
+                blob = bucket.blob(alt_gcs_path)
+            else:
+                return jsonify({"error": "Screenshot not found"}), 404
+            
+        # Download to memory and serve
+        content = blob.download_as_bytes()
+        mimetype = 'image/webp' if blob.name.endswith('.webp') else 'image/png'
+        return send_file(
+            io.BytesIO(content),
+            mimetype=mimetype
+        )
+    except Exception as e:
+        print(f"Error serving screenshot: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------------------
@@ -173,8 +213,12 @@ def get_reports():
                 print("Error parsing JSON:", blob.name, e)
 
         # Screenshots
-        if "screenshots" in blob.name and blob.name.endswith(".webp"):
-            reports[report_id]["screenshots"].append(blob.public_url)
+        # Look for screenshots in the report_id folder
+        if "screenshots" in blob.name and blob.name.lower().endswith((".webp", ".png", ".jpg", ".jpeg")):
+            filename = os.path.basename(blob.name)
+            # Use proxy URL to ensure access without public bucket
+            proxy_url = f"{request.host_url}reports/{report_id}/screenshots/{filename}"
+            reports[report_id]["screenshots"].append(proxy_url)
 
     # Final formatted output
     final_output = []
@@ -210,6 +254,14 @@ def get_reports():
             # Case Study Report
             elif "scraped_data" in raw and "analysis" in raw:
                 analysis = raw["analysis"]
+                
+                # Use the screenshot URL directly from the report JSON
+                screenshot_url = raw.get("screenshot")
+                
+                if screenshot_url:
+                     filename = os.path.basename(screenshot_url)
+                     # Force proxy URL to ensure access
+                     screenshot_url = f"{request.host_url}reports/{rep['id']}/screenshots/{filename}"
 
                 final_output.append({
                     "id": rep["id"],
@@ -222,7 +274,8 @@ def get_reports():
                     "improvements": analysis.get("improvements", []),
                     "verdict": analysis.get("verdict", ""),
                     "ux_keywords": analysis.get("ux_keywords", []),
-                    "screenshots": ss
+                    "screenshot": screenshot_url, # Specific screenshot for this project
+                    "screenshots": ss # All screenshots as backup
                 })
 
     return jsonify(final_output)

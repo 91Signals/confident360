@@ -29,7 +29,7 @@ def identify_platform(url):
         return "other"
 
 
-def process_main_url(url):
+def process_main_url(url, report_id=None):
     """
     Main processing function:
     - Identify platform
@@ -39,6 +39,7 @@ def process_main_url(url):
 
     Args:
         url (str): Portfolio URL to analyze
+        report_id (str): Optional UUID for GCS folder
 
     Returns:
         dict: {
@@ -61,7 +62,7 @@ def process_main_url(url):
 
     # Call final.py (your main orchestrator)
     print("📥 Extracting portfolio data...")
-    result = extract_portfolio(url, platform)
+    result = extract_portfolio(url, platform, report_id)
 
     # result must now return:
     # {

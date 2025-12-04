@@ -57,7 +57,7 @@ def scroll_to_bottom(page):
     time.sleep(1)
 
 
-def capture_screenshot(url, output_dir="backend/reports/screenshots"):
+def capture_screenshot(url, output_dir="backend/reports/screenshots", gcs_folder_prefix=""):
     """Capture full-page screenshot with full load + Notion-safe logic."""
 
 
@@ -67,7 +67,12 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots"):
     clean_url = url.replace('https://', '').replace('http://', '').replace('/', '_')[:50]
     filename = f"{clean_url}_{timestamp}.png"
     screenshot_path = os.path.join(output_dir, filename)
-    gcs_path = f"screenshots/{filename}"
+    
+    # Use the provided prefix if available, otherwise fallback to default
+    if gcs_folder_prefix:
+        gcs_path = f"{gcs_folder_prefix}screenshots/{filename}"
+    else:
+        gcs_path = f"screenshots/{filename}"
 
     is_notion = "notion.so" in url or "notion.site" in url
 

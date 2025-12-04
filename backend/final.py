@@ -17,7 +17,7 @@ def get_clean_filename(url):
     return domain or "portfolio"
 
 
-def extract_portfolio(url, platform):
+def extract_portfolio(url, platform, report_id=None):
     """
     Scrape portfolio → Send to Gemini → Save portfolio JSON → Extract project links → Analyze each project
 
@@ -39,7 +39,8 @@ def extract_portfolio(url, platform):
     timings = {
         "pipeline_start": datetime.now().isoformat(),
         "portfolio_url": url,
-        "platform": platform
+        "platform": platform,
+        "report_id": report_id
     }
     pipeline_start_time = time.perf_counter()
 
@@ -91,6 +92,9 @@ URL: {url}
 
 TEXT CONTENT (first 2000 chars):
 {json.dumps(scraped_data.get('content', '')[:2000], indent=2)}
+
+DETECTED PROJECT LINKS:
+{json.dumps(scraped_data.get('project_links', []), indent=2)}
 
 ANCHOR LINKS (first 50):
 {json.dumps(scraped_data.get('links', [])[:50], indent=2)}
@@ -167,9 +171,14 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
 
     # Upload main report to GCS
     from utils.gcs_utils import upload_file_to_gcs
-    parent_slug = get_clean_filename(url)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    gcs_folder = f"{parent_slug}_{timestamp}/"
+    
+    if report_id:
+        gcs_folder = f"{report_id}/"
+    else:
+        parent_slug = get_clean_filename(url)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        gcs_folder = f"{parent_slug}_{timestamp}/"
+        
     gcs_main_path = gcs_folder + os.path.basename(main_json_path)
     gcs_main_url = upload_file_to_gcs(main_json_path, gcs_main_path)
     timings['save_and_upload_main_report_seconds'] = round(time.perf_counter() - save_start, 2)
