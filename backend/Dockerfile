@@ -1,39 +1,69 @@
-# Use official Python runtime
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.4
+
+# ============================================
+# Stage 1: Base image with system dependencies
+# ============================================
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install all Playwright system deps for Chromium on Debian 12 (Trixie/Bookworm)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies in one layer
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates \
-    build-essential \
     libnss3 libxss1 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 \
     libpango-1.0-0 libgbm1 libasound2 libatspi2.0-0 libxshmfence1 \
     fonts-liberation xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
+# ============================================
+# Stage 2: Python dependencies
+# ============================================
+FROM base AS python-deps
+
+# Copy only requirements first for better caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright + Chromium
-RUN pip install playwright \
-    && playwright install chromium \
-    && playwright install-deps
+# Install Python packages with cache mount
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install -r requirements.txt
 
-# Copy backend
+# ============================================
+# Stage 3: Playwright installation
+# ============================================
+FROM python-deps AS playwright-install
+
+# Install Playwright and Chromium with cache
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/ms-playwright \
+    pip install playwright && \
+    playwright install chromium --with-deps
+
+# ============================================
+# Stage 4: Final runtime image
+# ============================================
+FROM playwright-install AS runtime
+
+# Copy application code (done last for best caching)
 COPY . .
 
+# Environment variables
 ENV PORT=8080
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+
 EXPOSE 8080
 
-# Playwright requires SINGLE worker
-# CMD ["gunicorn", "-w", "4", "-t", "600", "-b", "0.0.0.0:8080", "app:app"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
 
+# Run with single worker (Playwright compatibility)
 CMD ["gunicorn", "-w", "1", "-t", "3600", "-b", "0.0.0.0:8080", "--chdir", "/app", "app:app"]
-# Start the Flask application using Gunicorn
-# CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "--chdir", "/app", "app:app"]
 

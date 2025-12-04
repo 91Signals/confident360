@@ -1,24 +1,36 @@
+options:
+  # Use high-performance machine for faster builds
+  machineType: 'E2_HIGHCPU_8'
+  # Enable BuildKit for advanced caching
+  env:
+    - 'DOCKER_BUILDKIT=1'
+  # Use faster disk
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+
 steps:
-  # Build image using Docker cache
+  # Build with BuildKit and layer caching
   - name: 'gcr.io/cloud-builders/docker'
     args:
-      [
-        "build",
-        "-t",
-        "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA",
-        "-t",
-        "gcr.io/$PROJECT_ID/portfolio-backend:latest",
-        "./backend"
-      ]
+      - 'build'
+      - '--cache-from=gcr.io/$PROJECT_ID/portfolio-backend:latest'
+      - '--build-arg=BUILDKIT_INLINE_CACHE=1'
+      - '-t=gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
+      - '-t=gcr.io/$PROJECT_ID/portfolio-backend:latest'
+      - './backend'
+    env:
+      - 'DOCKER_BUILDKIT=1'
 
-  # Push both tags
+  # Push both tags in parallel (Cloud Build handles this)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"]
+    args: ['push', 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA']
+    waitFor: ['-']
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ["push", "gcr.io/$PROJECT_ID/portfolio-backend:latest"]
+    args: ['push', 'gcr.io/$PROJECT_ID/portfolio-backend:latest']
+    waitFor: ['-']
 
-  # Deploy the latest version
+  # Deploy to Cloud Run (wait for both pushes)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -28,10 +40,16 @@ steps:
           --image gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA \
           --region us-central1 \
           --platform managed \
-          --allow-unauthenticated
+          --allow-unauthenticated \
+          --cpu=2 \
+          --memory=4Gi \
+          --timeout=3600s \
+          --max-instances=10 \
+          --min-instances=0 \
+          --concurrency=80
 
 images:
-  - "gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA"
-  - "gcr.io/$PROJECT_ID/portfolio-backend:latest"
+  - 'gcr.io/$PROJECT_ID/portfolio-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/portfolio-backend:latest'
 
-timeout: "1200s"
+timeout: '600s'

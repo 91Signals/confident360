@@ -1,8 +1,66 @@
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
 *.pyc
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
 venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+tests/
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Local data and reports
 uploads/
 reports/
+data/raw/
+data/final/
 *.db
 *.log
-tests/
+
+# Behance session (if needed, remove this line)
+behance_storage.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Development
+.env
+.env.local
+*.local
+
+# Build files (not needed in image)
+Dockerfile
+.dockerignore
+
