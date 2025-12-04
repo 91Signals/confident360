@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { Upload, ArrowRight, CheckCircle2, Loader2, LogOut, User as UserIcon } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import AuthModal from '@/components/AuthModal';
 
 const LOADING_STEPS = [
   "Connecting to portfolio...",
@@ -17,9 +19,12 @@ const LOADING_STEPS = [
 
 export default function Home() {
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [designerCount, setDesignerCount] = useState(0);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
 
   useEffect(() => {
     // Animate designer count
@@ -55,12 +60,17 @@ export default function Home() {
     }
   }, [isLoading]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  // Handle pending form submission after login
+  useEffect(() => {
+    if (user && pendingFormData) {
+      submitAnalysis(pendingFormData);
+      setPendingFormData(null);
+    }
+  }, [user, pendingFormData]);
+
+  async function submitAnalysis(formData: FormData) {
     setIsLoading(true);
     setCurrentStep(0);
-
-    const formData = new FormData(e.currentTarget);
 
     try {
       // Direct call to Cloud Run to avoid Firebase Hosting 60s timeout
@@ -91,13 +101,59 @@ export default function Home() {
     }
   }
 
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    if (!user) {
+      setPendingFormData(formData);
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    await submitAnalysis(formData);
+  }
+
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-indigo-500/30">
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
         <header className="flex justify-between items-center mb-12 border-b border-white/10 pb-6">
           <div className="text-2xl font-bold bg-gradient-to-r from-indigo-500 to-violet-500 bg-clip-text text-transparent">
             Portfolio Analyzer
+          </div>
+          
+          <div>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt={user.displayName || 'User'} className="w-8 h-8 rounded-full border border-white/10" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                      <UserIcon size={16} />
+                    </div>
+                  )}
+                  <span className="hidden sm:inline">{user.displayName || user.email}</span>
+                </div>
+                <button 
+                  onClick={() => logout()}
+                  className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut size={20} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium transition-colors"
+              >
+                Sign In
+              </button>
+            )}
           </div>
         </header>
 
