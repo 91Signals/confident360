@@ -98,7 +98,7 @@ TEXT CONTENT (first 5000 chars):
 HEADINGS:
 {json.dumps(scraped_data.get('headings', [])[:15], indent=2)}
 
-A screenshot of the case study page is also provided for visual assessment.
+A screenshot of the case study page is also provided for visual assessment.if any data is missing, then refer to the given screenshot for analysis.
 
 ---------------------------
 RESPONSE FORMAT (STRICT)
@@ -373,6 +373,13 @@ Use EXACTLY this structure:
             print(f"  [DEBUG] Writing report to: {report_path}")
             with open(report_path, "w", encoding="utf-8") as f:
               json.dump(report, f, indent=2, ensure_ascii=False)
+            
+            # Print the case study JSON
+            print(f"\n{'='*80}")
+            print(f"📊 CASE STUDY ANALYSIS JSON [{idx}/{len(project_links)}]")
+            print(f"{'='*80}")
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+            print(f"{'='*80}\n")
 
             # Upload to GCS
             gcs_path = gcs_project_folder + os.path.basename(report_path)
