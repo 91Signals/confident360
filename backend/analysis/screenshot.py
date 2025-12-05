@@ -80,8 +80,18 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots", gcs_folder
         # Print initial size
         initial_size = os.path.getsize(input_path)
         print(f"🖼️Initial screenshot size: {initial_size/1024/1024:.2f} MB")
-        # Compress PNG to JPEG if needed, reduce quality until < target_size
+        
+        # Resize image to 50% of width
         img = Image.open(input_path)
+        original_width, original_height = img.size
+        new_width = original_width // 2
+        new_height = original_height // 2
+        print(f"📐 Original dimensions: {original_width}x{original_height}px")
+        print(f"📐 Resizing to: {new_width}x{new_height}px (50% width)")
+        
+        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Compress PNG to JPEG if needed, reduce quality until < target_size
         quality = 95
         buffer = io.BytesIO()
         img = img.convert("RGB")
@@ -97,8 +107,10 @@ def capture_screenshot(url, output_dir="backend/reports/screenshots", gcs_folder
             f.write(buffer.getvalue())
         final_size = size
         percent_reduced = 100 * (initial_size - final_size) / initial_size if initial_size > 0 else 0
-        print(f"🖼️ The Screenshot size after compression: {final_size/1024/1024:.2f} MB")
-        print(f"🔻 Size reduced: {percent_reduced:.1f}%")
+        print(f"\n📊 SIZE COMPARISON:")
+        print(f"  Before: {initial_size/1024/1024:.2f} MB ({initial_size:,} bytes)")
+        print(f"  After:  {final_size/1024/1024:.2f} MB ({final_size:,} bytes)")
+        print(f"  Reduced: {percent_reduced:.1f}% (Saved {(initial_size - final_size)/1024/1024:.2f} MB)\n")
         return final_size
 
     def file_hash(path):
