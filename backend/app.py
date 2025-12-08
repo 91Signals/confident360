@@ -6,6 +6,8 @@ import uuid
 from google.cloud import storage
 from main import run_analysis_from_flask
 from utils.gcs_utils import upload_file_to_gcs
+from utils.resume_parser import parse_resume
+from utils.firebase_db import save_user_profile, get_user_profile, update_user_profile_partial
 from PIL import Image
 import io
 
@@ -84,6 +86,7 @@ def results_page():
 def analyze():
     portfolio_url = request.form.get("portfolioUrl")
     resume = request.files.get("resume")
+    user_id = request.form.get("userId")  # Firebase user ID
 
     if not portfolio_url:
         return jsonify({"error": "Portfolio URL missing"}), 400
@@ -94,6 +97,13 @@ def analyze():
     safe_name = resume.filename.replace(" ", "_")
     resume_path = os.path.join(UPLOAD_FOLDER, safe_name)
     resume.save(resume_path)
+
+    # Extract resume details
+    resume_data = parse_resume(resume_path)
+    
+    # Save to Firestore if user_id provided
+    if user_id:
+        save_user_profile(user_id, portfolio_url, resume_data)
 
     # Upload resume PDF to GCS
     report_id = str(uuid.uuid4())
@@ -130,13 +140,117 @@ def analyze():
         "report_id": report_id,
         "resume_pdf_url": gcs_pdf_url,
         "uploaded_screenshots": uploaded_screenshots,
-        "time_report_url": time_report_url
+        "time_report_url": time_report_url,
+        "resume_data": resume_data  # Return extracted data to frontend
     })
 
 
 # ---------------------------------------
 # SERVE SCREENSHOTS (PROXY)
 # ---------------------------------------
+
+# -------  ----
+# USER PROFILE API
+# -------  ----
+
+@app.route("/api/extract-resume", methods=["POST"])
+def extract_resume_endpoint():
+    """
+    Extract resume details without full analysis
+    Used for prefilling user profile form
+    """
+    resume = request.files.get("resume")
+    
+    if not resume:
+        return jsonify({"error": "Resume file missing"}), 400
+    
+    try:
+        # Save resume temporarily
+        safe_name = resume.filename.replace(" ", "_")
+        resume_path = os.path.join(UPLOAD_FOLDER, safe_name)
+        resume.save(resume_path)
+        
+        # Extract details
+        resume_data = parse_resume(resume_path)
+        
+        # Clean up temp file
+        if os.path.exists(resume_path):
+            os.remove(resume_path)
+        
+        return jsonify({
+            "success": True,
+            "data": resume_data
+        })
+    except Exception as e:
+        print(f"[ERROR] Resume extraction failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/user-profile", methods=["GET"])
+def get_user_profile_endpoint():
+    """
+    Get user profile for authenticated user
+    """
+    user_id = request.args.get("userId")
+    
+    if not user_id:
+        return jsonify({"error": "userId parameter missing"}), 400
+    
+    try:
+        profile = get_user_profile(user_id)
+        
+        if profile:
+            return jsonify({
+                "success": True,
+                "profile": profile
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "No profile found"
+            }), 404
+    except Exception as e:
+        print(f"[ERROR] Failed to get user profile: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/user-profile", methods=["POST"])
+def save_user_profile_endpoint():
+    """
+    Save or update user profile
+    """
+    user_id = request.form.get("userId")
+    portfolio_url = request.form.get("portfolioUrl")
+    
+    if not user_id:
+        return jsonify({"error": "userId missing"}), 400
+    
+    try:
+        updates = {}
+        if request.form.get("name"):
+            updates["name"] = request.form.get("name")
+        if request.form.get("email"):
+            updates["email"] = request.form.get("email")
+        if request.form.get("phone"):
+            updates["phone"] = request.form.get("phone")
+        if request.form.get("linkedinUrl"):
+            updates["linkedinUrl"] = request.form.get("linkedinUrl")
+        if portfolio_url:
+            updates["portfolioUrl"] = portfolio_url
+        
+        if updates:
+            update_user_profile_partial(user_id, updates)
+        
+        return jsonify({
+            "success": True,
+            "message": "Profile saved"
+        })
+    except Exception as e:
+        print(f"[ERROR] Failed to save user profile: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# -------  ----
 
 @app.route("/reports/<report_id>/screenshots/<filename>")
 def serve_screenshot(report_id, filename):

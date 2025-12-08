@@ -24,3 +24,5 @@ playwright
 google-generativeai
 Pillow
 fpdf2
+firebase-admin>=6.0.0
+flask-cors

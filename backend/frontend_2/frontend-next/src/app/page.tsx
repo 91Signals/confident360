@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, ArrowRight, CheckCircle2, Loader2, LogOut, User as UserIcon } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthModal from '@/components/AuthModal';
+import EditableProfileModal from '@/components/EditableProfileModal';
 
 const LOADING_STEPS = [
   "Connecting to portfolio...",
@@ -25,6 +26,10 @@ export default function Home() {
   const [designerCount, setDesignerCount] = useState(0);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [extractedResumeData, setExtractedResumeData] = useState<any>(null);
+  const [portfolioUrl, setPortfolioUrl] = useState<string>('');
+  const [isExtractingResume, setIsExtractingResume] = useState(false);
 
   useEffect(() => {
     // Animate designer count
@@ -63,12 +68,90 @@ export default function Home() {
   // Handle pending form submission after login
   useEffect(() => {
     if (user && pendingFormData) {
-      submitAnalysis(pendingFormData);
+      // Extract resume and show profile modal
+      extractResumeData(pendingFormData);
       setPendingFormData(null);
     }
   }, [user, pendingFormData]);
 
+  async function extractResumeData(formData: FormData) {
+    setIsExtractingResume(true);
+    const url = formData.get('portfolioUrl') as string;
+    setPortfolioUrl(url);
+
+    try {
+      const response = await fetch('https://portfolio-backend-p4cawy2t5q-uc.a.run.app/api/extract-resume', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to extract resume data');
+      }
+
+      const result = await response.json();
+      setExtractedResumeData(result.data);
+      setIsProfileModalOpen(true);
+    } catch (error) {
+      console.error('Resume extraction error:', error);
+      alert('Failed to extract resume data. Proceeding without prefill.');
+      // Proceed with analysis anyway
+      await submitAnalysis(formData);
+    } finally {
+      setIsExtractingResume(false);
+    }
+  }
+
+  async function handleProfileConfirm(profileData: any) {
+    // Save profile to database
+    try {
+      await fetch('https://portfolio-backend-p4cawy2t5q-uc.a.run.app/api/user-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          userId: user?.uid || '',
+          portfolioUrl: portfolioUrl,
+          name: profileData.name || '',
+          email: profileData.email || '',
+          phone: profileData.phone || '',
+          linkedinUrl: profileData.linkedin_url || '',
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to save profile:', error);
+    }
+
+    // Close modal and proceed with analysis
+    setIsProfileModalOpen(false);
+    
+    // Recreate formData for analysis
+    const formData = new FormData();
+    formData.append('portfolioUrl', portfolioUrl);
+    
+    // We need to get the resume file - for now we'll just proceed
+    // In a real scenario, you might want to store it temporarily
+    if (pendingFormData) {
+      const resumeFile = pendingFormData.get('resume');
+      if (resumeFile) {
+        formData.append('resume', resumeFile as Blob);
+      }
+    }
+    
+    if (user?.uid) {
+      formData.append('userId', user.uid);
+    }
+    
+    await submitAnalysis(formData);
+  }
+
   async function submitAnalysis(formData: FormData) {
+    // Add userId to formData
+    if (user?.uid) {
+      formData.append('userId', user.uid);
+    }
+    
     setIsLoading(true);
     setCurrentStep(0);
 
@@ -117,6 +200,17 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-indigo-500/30">
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <EditableProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          setExtractedResumeData(null);
+        }}
+        onConfirm={handleProfileConfirm}
+        resumeData={extractedResumeData}
+        portfolioUrl={portfolioUrl}
+        isLoading={isExtractingResume}
+      />
       
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
