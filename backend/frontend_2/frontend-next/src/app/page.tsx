@@ -80,7 +80,7 @@ export default function Home() {
     setPortfolioUrl(url);
 
     try {
-      const response = await fetch('https://portfolio-backend-p4cawy2t5q-uc.a.run.app/api/extract-resume', {
+      const response = await fetch('/api/extract-resume', {
         method: 'POST',
         body: formData,
       });
@@ -105,7 +105,7 @@ export default function Home() {
   async function handleProfileConfirm(profileData: any) {
     // Save profile to database
     try {
-      await fetch('https://portfolio-backend-p4cawy2t5q-uc.a.run.app/api/user-profile', {
+      await fetch('/api/user-profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -156,8 +156,8 @@ export default function Home() {
     setCurrentStep(0);
 
     try {
-      // Direct call to Cloud Run to avoid Firebase Hosting 60s timeout
-      const res = await fetch('https://portfolio-backend-p4cawy2t5q-uc.a.run.app/analyze', {
+      // Use relative URL (Firebase Hosting will rewrite to Cloud Run)
+      const res = await fetch('/analyze', {
         method: 'POST',
         body: formData,
       });
