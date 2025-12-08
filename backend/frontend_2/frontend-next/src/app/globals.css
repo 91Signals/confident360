@@ -1,19 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  /* Base tokens */
   --background: #0a0a0a;
   --foreground: #ededed;
-  /* Brand colors from screenshots */
-  --indigo-500: #6366F1;
-  --violet-500: #8B5CF6;
-  --pink-500: #EC4899;
-  --grid-line: rgba(255,255,255,0.06);
-  --grid-dot: rgba(255,255,255,0.08);
-  --card-bg: #111111;
-  --card-border: rgba(255,255,255,0.10);
-  --nav-bg: rgba(6,6,6,0.9);
-  --glass: rgba(17,17,17,0.7);
 }
 
 @theme inline {
@@ -26,64 +15,5 @@
 @layer base {
   body {
     @apply bg-[#0a0a0a] text-white antialiased;
-    /* Grid background */
-    background-image:
-      radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 1px),
-      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-    background-size: 16px 16px, 64px 64px, 64px 64px;
-    background-position: 0 0, 0 0, 0 0;
-    position: relative;
   }
 }
-
-/* Subtle vignette overlay */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(circle at 20% 20%, rgba(99,102,241,0.15), transparent 35%),
-              radial-gradient(circle at 80% 20%, rgba(236,72,153,0.18), transparent 40%),
-              radial-gradient(circle at 50% 60%, rgba(99,102,241,0.12), transparent 45%);
-  z-index: 0;
-}
-
-/* Gradient heading utility matching screenshot style */
-.heading-gradient {
-  background: linear-gradient(90deg, var(--foreground) 40%, var(--indigo-500) 60%, var(--violet-500) 80%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Upload card styles */
-.upload-card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(99,102,241,0.08);
-}
-
-.gradient-border {
-  background: linear-gradient(90deg, var(--indigo-500), var(--pink-500));
-  padding: 2px;
-  border-radius: 16px;
-}
-
-.nav-blur {
-  background: var(--nav-bg);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--card-border);
-}
-
-.glass-panel {
-  background: var(--glass);
-  border: 1px solid var(--card-border);
-  border-radius: 14px;
-}
-
-.brand-button {
-  background: linear-gradient(90deg, var(--indigo-500), var(--violet-500));
-}
-
