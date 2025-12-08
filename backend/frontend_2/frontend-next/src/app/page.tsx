@@ -155,8 +155,8 @@ export default function Home() {
     setCurrentStep(0);
 
     try {
-      // Use relative URL (Firebase Hosting will rewrite to Cloud Run)
-      const res = await fetch('/analyze', {
+      // Use direct Cloud Run URL for long-running analysis to bypass Firebase 60s timeout
+      const res = await fetch('https://portfolio-backend-266108283870.us-central1.run.app/analyze', {
         method: 'POST',
         body: formData,
       });
