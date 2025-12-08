@@ -30,6 +30,7 @@ export default function Home() {
   const [extractedResumeData, setExtractedResumeData] = useState<any>(null);
   const [portfolioUrl, setPortfolioUrl] = useState<string>('');
   const [isExtractingResume, setIsExtractingResume] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   useEffect(() => {
     // Animate designer count
@@ -77,7 +78,10 @@ export default function Home() {
   async function extractResumeData(formData: FormData) {
     setIsExtractingResume(true);
     const url = formData.get('portfolioUrl') as string;
+    const file = formData.get('resume') as File;
+    
     setPortfolioUrl(url);
+    setResumeFile(file); // Store the file for later use
 
     try {
       const response = await fetch('/api/extract-resume', {
@@ -126,17 +130,12 @@ export default function Home() {
     // Close modal and proceed with analysis
     setIsProfileModalOpen(false);
     
-    // Recreate formData for analysis
+    // Recreate formData for analysis with the stored resume file
     const formData = new FormData();
     formData.append('portfolioUrl', portfolioUrl);
     
-    // We need to get the resume file - for now we'll just proceed
-    // In a real scenario, you might want to store it temporarily
-    if (pendingFormData) {
-      const resumeFile = pendingFormData.get('resume');
-      if (resumeFile) {
-        formData.append('resume', resumeFile as Blob);
-      }
+    if (resumeFile) {
+      formData.append('resume', resumeFile);
     }
     
     if (user?.uid) {
