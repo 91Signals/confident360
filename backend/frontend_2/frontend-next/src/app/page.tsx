@@ -1,383 +1,202 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, ArrowRight, CheckCircle2, Loader2, LogOut, User as UserIcon } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
-import AuthModal from '@/components/AuthModal';
-import EditableProfileModal from '@/components/EditableProfileModal';
-
-const LOADING_STEPS = [
-  "Connecting to portfolio...",
-  "Scanning case studies...",
-  "Extracting project links...",
-  "Analyzing portfolio...",
-  "Generating insights...",
-  "Compiling reports...",
-  "Finalizing results..."
-];
+import { Upload, Link as LinkIcon, CheckCircle2, Users, Star, ShieldCheck, Zap } from 'lucide-react';
+import LoadingState from '@/components/LoadingState';
 
 export default function Home() {
+  const [url, setUrl] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { user, logout } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [designerCount, setDesignerCount] = useState(0);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [extractedResumeData, setExtractedResumeData] = useState<any>(null);
-  const [portfolioUrl, setPortfolioUrl] = useState<string>('');
-  const [isExtractingResume, setIsExtractingResume] = useState(false);
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
-  useEffect(() => {
-    // Animate designer count
-    const target = 12847;
-    const duration = 2000;
-    const interval = 20;
-    const steps = duration / interval;
-    const increment = target / steps;
-    let current = 0;
-
-    const timer = setInterval(() => {
-      current += increment;
-      if (current >= target) {
-        current = target;
-        clearInterval(timer);
-      }
-      setDesignerCount(Math.floor(current));
-    }, interval);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (isLoading) {
-      const stepDuration = 700;
-      const timer = setInterval(() => {
-        setCurrentStep((prev) => {
-          if (prev < LOADING_STEPS.length - 1) return prev + 1;
-          return prev;
-        });
-      }, stepDuration);
-      return () => clearInterval(timer);
-    }
-  }, [isLoading]);
-
-  // Handle pending form submission after login
-  useEffect(() => {
-    if (user && pendingFormData) {
-      // Extract resume and show profile modal
-      extractResumeData(pendingFormData);
-      setPendingFormData(null);
-    }
-  }, [user, pendingFormData]);
-
-  async function extractResumeData(formData: FormData) {
-    setIsExtractingResume(true);
-    const url = formData.get('portfolioUrl') as string;
-    const file = formData.get('resume') as File;
-    
-    setPortfolioUrl(url);
-    setResumeFile(file); // Store the file for later use
-
-    try {
-      const response = await fetch('/api/extract-resume', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to extract resume data');
-      }
-
-      const result = await response.json();
-      setExtractedResumeData(result.data);
-      setIsProfileModalOpen(true);
-    } catch (error) {
-      console.error('Resume extraction error:', error);
-      alert('Failed to extract resume data. Proceeding without prefill.');
-      // Proceed with analysis anyway
-      await submitAnalysis(formData);
-    } finally {
-      setIsExtractingResume(false);
-    }
-  }
-
-  async function handleProfileConfirm(profileData: any) {
-    // Save profile to database
-    try {
-      await fetch('/api/user-profile', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          userId: user?.uid || '',
-          portfolioUrl: portfolioUrl,
-          name: profileData.name || '',
-          email: profileData.email || '',
-          phone: profileData.phone || '',
-          linkedinUrl: profileData.linkedin_url || '',
-        }),
-      });
-    } catch (error) {
-      console.error('Failed to save profile:', error);
-    }
-
-    // Close modal and proceed with analysis
-    setIsProfileModalOpen(false);
-    
-    // Recreate formData for analysis with the stored resume file
-    const formData = new FormData();
-    formData.append('portfolioUrl', portfolioUrl);
-    
-    if (resumeFile) {
-      formData.append('resume', resumeFile);
-    }
-    
-    if (user?.uid) {
-      formData.append('userId', user.uid);
-    }
-    
-    await submitAnalysis(formData);
-  }
-
-  async function submitAnalysis(formData: FormData) {
-    // Add userId to formData
-    if (user?.uid) {
-      formData.append('userId', user.uid);
-    }
-    
-    setIsLoading(true);
-    setCurrentStep(0);
-
-    try {
-      // Use relative URL (Firebase Hosting will rewrite to Cloud Run)
-      const res = await fetch('/analyze', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        console.error('Server error:', res.status, text);
-        throw new Error(`Server responded with ${res.status}: ${text.slice(0, 100)}`);
-      }
-
-      const result = await res.json();
-
-      if (result.error) {
-        alert("Error: " + result.error);
-        setIsLoading(false);
-        return;
-      }
-
-      router.push(`/results?report_id=${result.report_id}`);
-    } catch (error: any) {
-      console.error('Fetch error:', error);
-      alert(`An error occurred: ${error.message}`);
-      setIsLoading(false);
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    setLoading(true);
 
-    if (!user) {
-      setPendingFormData(formData);
-      setIsAuthModalOpen(true);
-      return;
+    const formData = new FormData();
+    if (url) formData.append('url', url);
+    if (file) formData.append('file', file);
+
+    try {
+      const response = await fetch('/analyze', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        router.push('/results');
+      } else {
+        console.error('Analysis failed');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setLoading(false);
     }
+  };
 
-    await submitAnalysis(formData);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingState />
+      </div>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-indigo-500/30">
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
-      <EditableProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => {
-          setIsProfileModalOpen(false);
-          setExtractedResumeData(null);
-        }}
-        onConfirm={handleProfileConfirm}
-        resumeData={extractedResumeData}
-        portfolioUrl={portfolioUrl}
-        isLoading={isExtractingResume}
-      />
-      
-      <div className="container mx-auto px-4 py-6">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-12 border-b border-white/10 pb-6">
-          <div className="text-2xl font-bold bg-gradient-to-r from-indigo-500 to-violet-500 bg-clip-text text-transparent">
-            Portfolio Analyzer
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-xl">P</span>
+            </div>
+            <span className="text-xl font-bold text-gray-900">Portfolio Analyzer</span>
           </div>
-          
-          <div>
-            {user ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt={user.displayName || 'User'} className="w-8 h-8 rounded-full border border-white/10" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400">
-                      <UserIcon size={16} />
-                    </div>
-                  )}
-                  <span className="hidden sm:inline">{user.displayName || user.email}</span>
+          <div className="text-sm text-gray-500">Job Ready Assessment</div>
+        </div>
+      </header>
+
+      <main>
+        {/* Hero Section */}
+        <div className="bg-white pb-16 pt-12 lg:pt-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 tracking-tight mb-6">
+              Is your design portfolio <span className="text-blue-600">job ready?</span>
+            </h1>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-10">
+              Get instant, AI-driven feedback to score your process, uncover gaps, and elevate your storytelling, getting you job ready faster.
+            </p>
+            
+            {/* Feature Grid */}
+            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-16">
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheck className="w-6 h-6 text-blue-600" />
                 </div>
-                <button 
-                  onClick={() => logout()}
-                  className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
-                  title="Sign Out"
-                >
-                  <LogOut size={20} />
-                </button>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Expert-Trained AI</h3>
+                <p className="text-gray-600">Trained on top design portfolios and vetted by leading designers from global brands.</p>
               </div>
-            ) : (
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium transition-colors"
-              >
-                Sign In
-              </button>
-            )}
-          </div>
-        </header>
-
-        <AnimatePresence mode="wait">
-          {!isLoading ? (
-            <motion.div
-              key="landing"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="max-w-4xl mx-auto"
-            >
-              {/* Hero */}
-              <div className="text-center mb-16">
-                <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-                  Is your design portfolio <br />
-                  <span className="text-indigo-500">job ready?</span>
-                </h1>
-                <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-                  Get instant, AI-driven feedback to score your process, uncover gaps, and elevate your storytelling.
-                </p>
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <Users className="w-6 h-6 text-green-600" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Hiring Manager Approved</h3>
+                <p className="text-gray-600">Gain the expert perspective from Fortune 500 hiring teams, available 24/7.</p>
               </div>
-
-              {/* Features */}
-              <div className="grid md:grid-cols-3 gap-6 mb-16">
-                {[
-                  { title: "Expert-Trained AI", desc: "Trained on top portfolios and vetted by global design leads." },
-                  { title: "Hiring Manager Approved", desc: "Insights from Fortune 500 hiring perspectives." },
-                  { title: "Actionable Insights", desc: "Precise feedback to fix gaps and land interviews." }
-                ].map((f, i) => (
-                  <div key={i} className="bg-[#111] border border-white/10 p-6 rounded-xl hover:border-indigo-500/50 transition-colors">
-                    <h3 className="text-lg font-semibold text-indigo-400 mb-2">{f.title}</h3>
-                    <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
-                  </div>
-                ))}
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <Zap className="w-6 h-6 text-purple-600" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Precise Actionable Insights</h3>
+                <p className="text-gray-600">Stop guessing what's preventing you from landing that dream job with immediate feedback.</p>
               </div>
+            </div>
 
-              {/* Social Proof */}
-              <div className="text-center mb-12">
-                <p className="text-gray-500">
-                  Trusted by <strong className="text-white">{designerCount.toLocaleString()}</strong> Designers
-                </p>
+            <div className="flex items-center justify-center space-x-2 text-gray-600 mb-16">
+              <Users className="w-5 h-5" />
+              <span>Trusted by <strong>12,847</strong> Designers</span>
+            </div>
+
+            {/* Analysis Form */}
+            <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900 text-center">Analyze Your Portfolio</h2>
               </div>
-
-              {/* Form */}
-              <div className="bg-[#111] border border-white/10 rounded-2xl p-8 md:p-10 max-w-2xl mx-auto shadow-2xl shadow-indigo-500/10">
-                <h2 className="text-2xl font-semibold text-center mb-8">Analyze Your Portfolio</h2>
+              <div className="p-8">
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
-                    <label htmlFor="portfolioUrl" className="block text-sm font-medium text-gray-300 mb-2">
+                    <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-2">
                       Portfolio URL
                     </label>
-                    <input
-                      type="url"
-                      name="portfolioUrl"
-                      id="portfolioUrl"
-                      placeholder="https://yourportfolio.com"
-                      required
-                      className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                    />
+                    <div className="relative rounded-md shadow-sm">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <LinkIcon className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="url"
+                        id="url"
+                        required
+                        className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        placeholder="https://yourportfolio.com"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                      />
+                    </div>
                   </div>
 
                   <div>
-                    <label htmlFor="resume" className="block text-sm font-medium text-gray-300 mb-2">
+                    <label htmlFor="file" className="block text-sm font-medium text-gray-700 mb-2">
                       Upload Resume (PDF)
                     </label>
-                    <div className="relative">
+                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-blue-400 transition-colors cursor-pointer relative bg-gray-50 hover:bg-blue-50">
                       <input
                         type="file"
-                        name="resume"
-                        id="resume"
-                        accept="application/pdf"
+                        id="file"
+                        accept=".pdf"
                         required
-                        className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg px-4 py-3 text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20 transition-all"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        onChange={(e) => setFile(e.target.files?.[0] || null)}
                       />
-                      <Upload className="absolute right-4 top-3.5 w-5 h-5 text-gray-500 pointer-events-none" />
+                      <div className="space-y-1 text-center">
+                        <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                        <div className="flex text-sm text-gray-600 justify-center">
+                          <span className="font-medium text-blue-600 hover:text-blue-500">
+                            {file ? file.name : 'Upload a file'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">PDF up to 10MB</p>
+                      </div>
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 rounded-lg transition-all flex items-center justify-center gap-2 group"
+                    disabled={!url || !file}
+                    className="w-full flex justify-center py-4 px-4 border border-transparent rounded-lg shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02]"
                   >
                     Analyze Portfolio
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </form>
               </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center min-h-[60vh]"
-            >
-              <div className="relative w-24 h-24 mb-12">
-                <div className="absolute inset-0 border-4 border-white/10 rounded-full"></div>
-                <div className="absolute inset-0 border-4 border-t-indigo-500 rounded-full animate-spin"></div>
-              </div>
+            </div>
+          </div>
+        </div>
 
-              <div className="space-y-4 w-full max-w-md">
-                {LOADING_STEPS.map((step, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ 
-                      opacity: index <= currentStep ? 1 : 0.3,
-                      x: 0,
-                      color: index < currentStep ? '#10b981' : index === currentStep ? '#6366f1' : '#6b7280'
-                    }}
-                    className="flex items-center gap-4 text-lg font-medium"
-                  >
-                    <div className="w-6 h-6 flex items-center justify-center">
-                      {index < currentStep ? (
-                        <CheckCircle2 className="w-6 h-6" />
-                      ) : index === currentStep ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <div className="w-2 h-2 bg-current rounded-full" />
-                      )}
-                    </div>
-                    {step}
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </main>
+        {/* Testimonials */}
+        <div className="bg-gray-50 py-16 border-t border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">What Designers Are Saying</h2>
+            <div className="grid md:grid-cols-3 gap-8">
+              {[
+                {
+                  text: "This tool helped me identify weak spots in my case studies that I hadn't noticed for months. Landed 3 interviews after updating!",
+                  author: "Product Designer"
+                },
+                {
+                  text: "The specific feedback on accessibility and visual hierarchy was a game changer. It's like having a senior designer review your work.",
+                  author: "UX Researcher"
+                },
+                {
+                  text: "Finally, a tool that understands the nuance of design storytelling. The phase scoring is incredibly accurate.",
+                  author: "Senior UI Designer"
+                }
+              ].map((testimonial, i) => (
+                <div key={i} className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+                  <div className="flex text-yellow-400 mb-4">
+                    {[...Array(5)].map((_, j) => <Star key={j} className="w-4 h-4 fill-current" />)}
+                  </div>
+                  <p className="text-gray-600 mb-4 italic">"{testimonial.text}"</p>
+                  <p className="text-sm font-bold text-gray-900">- {testimonial.author}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }

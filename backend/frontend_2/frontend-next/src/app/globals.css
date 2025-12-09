@@ -17,3 +17,38 @@
     @apply bg-[#0a0a0a] text-white antialiased;
   }
 }
+
+/* Dark grid pattern background */
+.grid-background {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+  background-position: center center;
+}
+
+/* Radial glow effect */
+.radial-glow {
+  background: radial-gradient(
+    ellipse 800px 600px at 50% 20%,
+    rgba(139, 92, 246, 0.15),
+    rgba(236, 72, 153, 0.1),
+    transparent
+  );
+}
+
+/* Gradient border top effect */
+.gradient-border-top {
+  position: relative;
+}
+
+.gradient-border-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(to right, #8b5cf6, #ec4899);
+  border-radius: 16px 16px 0 0;
+}

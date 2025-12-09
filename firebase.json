@@ -9,6 +9,10 @@
         "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
       },
       {
+        "source": "/analyze/status/**",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
         "source": "/reports",
         "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
       },

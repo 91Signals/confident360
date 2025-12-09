@@ -1,12 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'export',
-  images: {
-    unoptimized: true,
+  async rewrites() {
+    return [
+      {
+        source: '/analyze',
+        destination: 'http://localhost:8080/analyze',
+      },
+      {
+        source: '/reports',
+        destination: 'http://localhost:8080/reports',
+      },
+    ];
   },
-  // Rewrites are not supported in static export. 
-  // For local development with the backend, you may need to use a separate proxy or full URLs.
 };
 
 export default nextConfig;

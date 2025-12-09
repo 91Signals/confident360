@@ -10,6 +10,7 @@ from utils.resume_parser import parse_resume
 from utils.firebase_db import save_user_profile, get_user_profile, update_user_profile_partial
 from PIL import Image
 import io
+import threading
 
 # ---------------------------------------
 # FLASK + FOLDER SETUP
@@ -78,9 +79,159 @@ def results_page():
     return render_template("results.html")
 
 
+@app.route("/api/portfolio-analysis", methods=["GET"])
+def portfolio_analysis_seo_page():
+        """Public, crawlable landing copy for the portfolio analysis app."""
+        html = """<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+    <title>Portfolio Analysis App | Confi360</title>
+    <meta name=\"description\" content=\"Analyze UX portfolios in minutes with Confi360. Upload your resume, submit your portfolio URL, and get AI-powered screenshots, UX feedback, and structured reports hosted on Firebase and Cloud Run.\" />
+    <meta name=\"keywords\" content=\"portfolio analysis, UX case study review, AI design feedback, Confi360, product design portfolio, resume parser\" />
+    <meta name=\"robots\" content=\"index, follow\" />
+    <link rel=\"canonical\" href=\"https://confi360-7c790.web.app/\" />
+    <meta property=\"og:type\" content=\"website\" />
+    <meta property=\"og:title\" content=\"Portfolio Analysis App | Confi360\" />
+    <meta property=\"og:description\" content=\"Run a fast UX portfolio teardown with AI: capture screenshots, parse resumes, and get actionable design critiques.\" />
+    <meta property=\"og:url\" content=\"https://confi360-7c790.web.app/\" />
+    <meta property=\"og:image\" content=\"https://confi360-7c790.web.app/og-image.png\" />
+    <meta name=\"twitter:card\" content=\"summary_large_image\" />
+    <meta name=\"twitter:title\" content=\"Portfolio Analysis App | Confi360\" />
+    <meta name=\"twitter:description\" content=\"AI-powered portfolio analysis with screenshots, UX scoring, and next steps.\" />
+    <meta name=\"twitter:image\" content=\"https://confi360-7c790.web.app/og-image.png\" />
+    <script type=\"application/ld+json\">{
+        \"@context\": \"https://schema.org\",
+        \"@type\": \"WebApplication\",
+        \"name\": \"Confi360 Portfolio Analysis\",
+        \"url\": \"https://confi360-7c790.web.app/\",
+        \"applicationCategory\": \"Productivity\",
+        \"description\": \"AI-assisted UX portfolio analyzer that captures screenshots, parses resumes, and returns structured UX feedback.\",
+        \"operatingSystem\": \"Web\",
+        \"publisher\": {\"@type\": \"Organization\", \"name\": \"Confi360\"},
+        \"offers\": {\"@type\": \"Offer\", \"price\": \"0\", \"priceCurrency\": \"USD\"}
+    }</script>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; padding: 0; background: #0b1021; color: #e9ecf5; }
+        main { max-width: 900px; margin: 0 auto; padding: 56px 20px 72px; }
+        h1 { font-size: 2.4rem; margin-bottom: 0.5rem; }
+        h2 { margin-top: 2rem; font-size: 1.3rem; color: #9fb3ff; }
+        p { line-height: 1.6; color: #c9d2e9; }
+        ul { padding-left: 20px; color: #c9d2e9; }
+        .hero { background: linear-gradient(135deg, #1a2240, #0f162e); border: 1px solid #1f2b55; border-radius: 12px; padding: 20px; margin-bottom: 28px; box-shadow: 0 12px 30px rgba(0,0,0,0.35); }
+        .cta { display: inline-block; margin-top: 12px; background: #7bd1ff; color: #0b1021; padding: 12px 18px; border-radius: 10px; font-weight: 700; text-decoration: none; }
+        .card { border: 1px solid #1f2b55; border-radius: 12px; padding: 18px; margin-top: 18px; background: #111831; }
+    </style>
+</head>
+<body>
+    <main>
+        <section class=\"hero\">
+            <h1>AI Portfolio Analysis for Designers</h1>
+            <p>Confi360 analyzes UX portfolios and case studies in minutes. It captures full-page screenshots, parses resumes, scores UX quality, and delivers structured recommendations you can share with recruiters or clients.</p>
+            <a class=\"cta\" href=\"https://confi360-7c790.web.app/\">Open the Portfolio Analysis App</a>
+        </section>
+
+        <section class=\"card\">
+            <h2>How it works</h2>
+            <ul>
+                <li>Paste your portfolio URL and upload a resume PDF.</li>
+                <li>Our Cloud Run backend captures screenshots with Playwright and scrapes project pages for content and structure.</li>
+                <li>Gemini summarizes UX strengths, gaps, and suggested improvements.</li>
+                <li>Firebase Hosting serves the frontend and proxies API calls to Cloud Run for fast, secure delivery.</li>
+            </ul>
+        </section>
+
+        <section class=\"card\">
+            <h2>What you get</h2>
+            <ul>
+                <li>Shareable screenshots of your portfolio and case studies.</li>
+                <li>UX scoring by phase (research, visual design, validation, storytelling).</li>
+                <li>Actionable improvement tips to strengthen your portfolio narrative.</li>
+                <li>Downloadable reports hosted on secure Google Cloud Storage.</li>
+            </ul>
+        </section>
+
+        <section class=\"card\">
+            <h2>Call to action</h2>
+            <p>Ready to see how your work reads to reviewers? Open the app, run an analysis, and share the report link with hiring managers.</p>
+            <a class=\"cta\" href=\"https://confi360-7c790.web.app/\">Analyze my portfolio</a>
+        </section>
+    </main>
+</body>
+</html>
+"""
+        return html, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600"}
+
+
 # ---------------------------------------
 # ANALYZE → RUN PIPELINE → UPLOAD TO GCS
 # ---------------------------------------
+
+# In-memory status tracker
+analysis_status = {}
+
+def process_analysis_async(portfolio_url, resume_path, report_id, user_id, safe_name):
+    """Background task to run analysis"""
+    try:
+        analysis_status[report_id] = {"status": "processing", "progress": 0, "current_step": "Initializing..."}
+        
+        # Clear stale local reports
+        for f in os.listdir(REPORT_FOLDER):
+            if f.endswith(".json"):
+                os.remove(os.path.join(REPORT_FOLDER, f))
+        
+        analysis_status[report_id]["progress"] = 5
+        analysis_status[report_id]["current_step"] = "Analyzing portfolio projects..."
+        
+        # Run pipeline
+        result = run_analysis_from_flask(portfolio_url, resume_path, report_id)
+        
+        analysis_status[report_id]["progress"] = 70
+        analysis_status[report_id]["current_step"] = "Processing screenshots..."
+        
+        # Convert and upload local screenshots
+        uploaded_screenshots = []
+        folder = f"{report_id}/"
+        screenshot_files = [f for f in os.listdir(SCREENSHOT_FOLDER) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+        total_screenshots = len(screenshot_files)
+        
+        for idx, file in enumerate(screenshot_files):
+            local_path = os.path.join(SCREENSHOT_FOLDER, file)
+            gcs_path = f"{folder}screenshots/{file.replace('.png','.webp')}"
+            final_url = compress_and_upload_screenshot(local_path, gcs_path)
+            uploaded_screenshots.append(final_url)
+            
+            # Update progress for screenshot processing
+            screenshot_progress = 70 + (20 * (idx + 1) / max(total_screenshots, 1))
+            analysis_status[report_id]["progress"] = int(screenshot_progress)
+            analysis_status[report_id]["current_step"] = f"Processing screenshots... ({idx + 1}/{total_screenshots})"
+        
+        analysis_status[report_id]["progress"] = 90
+        analysis_status[report_id]["current_step"] = "Finalizing upload..."
+        
+        # Extract time report URL from result
+        time_report_url = result.get('time_report_url') if result and isinstance(result, dict) else None
+        
+        # Upload resume PDF to GCS
+        gcs_pdf_path = folder + safe_name
+        gcs_pdf_url = upload_file_to_gcs(resume_path, gcs_pdf_path)
+        
+        analysis_status[report_id] = {
+            "status": "complete",
+            "progress": 100,
+            "current_step": "Complete!",
+            "resume_pdf_url": gcs_pdf_url,
+            "uploaded_screenshots": uploaded_screenshots,
+            "time_report_url": time_report_url
+        }
+        
+    except Exception as e:
+        analysis_status[report_id] = {
+            "status": "error",
+            "error": str(e),
+            "progress": 0
+        }
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -105,44 +256,31 @@ def analyze():
     if user_id:
         save_user_profile(user_id, portfolio_url, resume_data)
 
-    # Upload resume PDF to GCS
+    # Generate report ID
     report_id = str(uuid.uuid4())
-    folder = f"{report_id}/"
-
-    gcs_pdf_path = folder + safe_name
-    gcs_pdf_url = upload_file_to_gcs(resume_path, gcs_pdf_path)
-
-    # Clear stale local reports
-    for f in os.listdir(REPORT_FOLDER):
-        if f.endswith(".json"):
-            os.remove(os.path.join(REPORT_FOLDER, f))
-
-    # Run pipeline
-    try:
-        result = run_analysis_from_flask(portfolio_url, resume_path, report_id)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    # Convert and upload local screenshots
-    uploaded_screenshots = []
-    for file in os.listdir(SCREENSHOT_FOLDER):
-        if file.lower().endswith((".png", ".jpg", ".jpeg")):
-            local_path = os.path.join(SCREENSHOT_FOLDER, file)
-            gcs_path = f"{folder}screenshots/{file.replace('.png','.webp')}"
-            final_url = compress_and_upload_screenshot(local_path, gcs_path)
-            uploaded_screenshots.append(final_url)
-
-    # Extract time report URL from result if available
-    time_report_url = result.get('time_report_url') if result and isinstance(result, dict) else None
     
+    # Start background processing
+    thread = threading.Thread(
+        target=process_analysis_async,
+        args=(portfolio_url, resume_path, report_id, user_id, safe_name)
+    )
+    thread.daemon = True
+    thread.start()
+    
+    # Return immediately with report_id
     return jsonify({
-        "message": "analysis_complete",
+        "message": "analysis_started",
         "report_id": report_id,
-        "resume_pdf_url": gcs_pdf_url,
-        "uploaded_screenshots": uploaded_screenshots,
-        "time_report_url": time_report_url,
-        "resume_data": resume_data  # Return extracted data to frontend
+        "resume_data": resume_data
     })
+
+@app.route("/analyze/status/<report_id>", methods=["GET"])
+def analyze_status(report_id):
+    """Check analysis status"""
+    if report_id not in analysis_status:
+        return jsonify({"error": "Report not found"}), 404
+    
+    return jsonify(analysis_status[report_id])
 
 
 # ---------------------------------------
