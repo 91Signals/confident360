@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+backend/.venv/
+backend/__pycache__/
+backend/*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Next.js
+backend/frontend_2/frontend-next/.next/
+backend/frontend_2/frontend-next/out/
+backend/frontend_2/frontend-next/.env
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+backend/utils/.env
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Package files (root level - should be in subdirectories)
+/package.json
+/package-lock.json
+/setupFirestore.js
+
+# Temporary files
+*.log
+*.tmp

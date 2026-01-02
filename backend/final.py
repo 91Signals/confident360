@@ -8,6 +8,10 @@ from urllib.parse import urlparse
 from scrapers import behance, designfolio, notion, normal_scraper
 from analysis import casestudies
 from utils.gemini_api import analyze_content
+from utils.firebase_db import (
+  save_portfolio_main_json,
+  save_time_report,
+)
 
 
 def get_clean_filename(url):
@@ -164,8 +168,16 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     filename = get_clean_filename(url)
     main_json_path = f"backend/reports/{filename}_main_portfolio.json"
 
+    # Add type field for frontend identification
+    portfolio_report = {
+      "type": "portfolio",
+      "generated_at": datetime.now().isoformat(),
+      "url": url,
+      **gemini_response
+    }
+
     with open(main_json_path, "w", encoding="utf-8") as f:
-      json.dump(gemini_response, f, indent=2, ensure_ascii=False)
+      json.dump(portfolio_report, f, indent=2, ensure_ascii=False)
 
     print(f"📁 Main portfolio report saved: {main_json_path}\n")
 
@@ -183,6 +195,13 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     gcs_main_url = upload_file_to_gcs(main_json_path, gcs_main_path)
     timings['save_and_upload_main_report_seconds'] = round(time.perf_counter() - save_start, 2)
     print(f"[GCS] Uploaded main report to: {gcs_main_url}")
+
+    # Save main report in DB
+    if report_id:
+      try:
+        save_portfolio_main_json(report_id, portfolio_report, gcs_main_url)
+      except Exception as _:
+        pass
 
     # --------------------------
     # 4. EXTRACT PROJECT LINKS (NEW LOGIC)
@@ -204,6 +223,20 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     print(f"✅ Found {len(project_links)} project links\n")
     print(project_links)
     print("\n\n")
+    
+    # Update status with projects found
+    if report_id:
+        from utils.firebase_db import update_analysis_status
+        update_analysis_status(
+            report_id,
+            status="processing",
+            progress=30,
+            message=f"Found {len(project_links)} case studies. Starting detailed analysis...",
+            result_data={
+                "projects_found": len(project_links),
+                "projects_analyzed": 0,
+            }
+        )
 
     # --------------------------
     # 5. ANALYZE EACH PROJECT PAGE
@@ -214,7 +247,7 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     if project_links:
         print("📊 Analyzing individual projects...\n")
         projects_start = time.perf_counter()
-        project_reports_count, project_timings = casestudies.analyze_projects(project_links, url, gcs_folder)
+        project_reports_count, project_timings = casestudies.analyze_projects(project_links, url, gcs_folder, report_id=report_id)
         timings['total_project_analysis_seconds'] = round(time.perf_counter() - projects_start, 2)
         timings['projects_analyzed'] = project_reports_count
         timings['per_project_timings'] = project_timings
@@ -281,6 +314,13 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     gcs_time_report_path = gcs_folder + time_report_filename
     gcs_time_report_url = upload_file_to_gcs(time_report_path, gcs_time_report_path)
     print(f"📊 Time report saved to GCS: {gcs_time_report_url}\n")
+
+    # Save time report in DB
+    if report_id:
+      try:
+        save_time_report(report_id, timings, gcs_time_report_url)
+      except Exception as _:
+        pass
 
     # --------------------------
     # 8. RETURN FINAL RESULT

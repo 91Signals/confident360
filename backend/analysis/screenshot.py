@@ -1,184 +1,169 @@
 import os
-import time
-from datetime import datetime
-from playwright.sync_api import sync_playwright
-from PIL import Image
 import io
 import hashlib
-from utils.gcs_utils import upload_file_to_gcs, download_file_from_gcs, bucket
+from datetime import datetime
+from PIL import Image
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
-def wait_for_full_load(page, timeout=15000):
-    """Wait until the page has no active network connections for 500ms."""
-    page.wait_for_load_state("domcontentloaded")
+from utils.gcs_utils import upload_file_to_gcs, download_file_from_gcs, get_bucket
 
-    start_time = time.time()
-    last_activity = time.time()
 
-    while True:
-        activity = page.evaluate("() => window.performance.getEntriesByType('resource').length")
-        
-        # If no new network activity for 500ms → assume stable
-        if activity == 0:
-            if time.time() - last_activity >= 0.5:
-                break
-        else:
-            last_activity = time.time()
+# ---------------------------
+# Utils
+# ---------------------------
 
-        if time.time() - start_time > timeout / 1000:
-            print("⏳ Timed out waiting for resource stability.")
+def safe_filename(url: str) -> str:
+    return (
+        url.replace("https://", "")
+        .replace("http://", "")
+        .replace("/", "_")
+        .replace("?", "_")
+        .replace("&", "_")
+        .replace("=", "_")
+        [:50]
+    )
+
+
+def file_hash(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def compress_image(
+    path: str,
+    target_size: int = 3 * 1024 * 1024,  # 3 MB
+):
+    """Compress image and print before/after sizes."""
+    before = os.path.getsize(path)
+    print(f"🖼️ Screenshot size BEFORE compression: {before / 1024 / 1024:.2f} MB")
+
+    img = Image.open(path).convert("RGB")
+    w, h = img.size
+    img = img.resize((w // 2, h // 2), Image.Resampling.LANCZOS)
+
+    quality = 85
+    buffer = io.BytesIO()
+
+    while quality >= 40:
+        buffer.seek(0)
+        buffer.truncate()
+        img.save(buffer, format="JPEG", quality=quality)
+        if buffer.tell() <= target_size:
             break
+        quality -= 5
 
-        time.sleep(0.1)
+    with open(path, "wb") as f:
+        f.write(buffer.getvalue())
 
-    # Extra wait for layout finishing
-    time.sleep(0.5)
-
-
-def scroll_to_bottom(page):
-    """Scroll gradually to let all lazy content render."""
-    page.evaluate("""
-        async () => {
-            await new Promise(resolve => {
-                let totalHeight = 0;
-                const distance = 800;
-                const timer = setInterval(() => {
-                    window.scrollBy(0, distance);
-                    totalHeight += distance;
-
-                    if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
-                        clearInterval(timer);
-                        resolve();
-                    }
-                }, 150);
-            });
-        }
-    """)
-    time.sleep(1)
+    after = os.path.getsize(path)
+    print(f"🖼️ Screenshot size AFTER compression: {after / 1024 / 1024:.2f} MB")
 
 
-def capture_screenshot(url, output_dir="backend/reports/screenshots", gcs_folder_prefix=""):
-    """Capture full-page screenshot with full load + Notion-safe logic."""
+# ---------------------------
+# Main Function
+# ---------------------------
 
+def capture_screenshot(
+    url: str,
+    output_dir: str = "backend/reports/screenshots",
+    gcs_folder_prefix: str = "",
+):
+    """
+    FULL-PAGE screenshot with size logging and safe compression.
+    Runtime: 10–20s max.
+    """
 
     os.makedirs(output_dir, exist_ok=True)
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    clean_url = url.replace('https://', '').replace('http://', '').replace('/', '_')[:50]
-    filename = f"{clean_url}_{timestamp}.png"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{safe_filename(url)}_{timestamp}.jpg"
     screenshot_path = os.path.join(output_dir, filename)
-    
-    # Use the provided prefix if available, otherwise fallback to default
-    if gcs_folder_prefix:
-        gcs_path = f"{gcs_folder_prefix}screenshots/{filename}"
-    else:
-        gcs_path = f"screenshots/{filename}"
 
-    is_notion = "notion.so" in url or "notion.site" in url
-
-    def compress_image_to_target_size(input_path, target_size=3*1024*1024):
-        # Print initial size
-        initial_size = os.path.getsize(input_path)
-        print(f"🖼️Initial screenshot size: {initial_size/1024/1024:.2f} MB")
-        
-        # Resize image to 50% of width
-        img = Image.open(input_path)
-        original_width, original_height = img.size
-        new_width = original_width // 2
-        new_height = original_height // 2
-        print(f"📐 Original dimensions: {original_width}x{original_height}px")
-        print(f"📐 Resizing to: {new_width}x{new_height}px (50% width)")
-        
-        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        # Compress PNG to JPEG if needed, reduce quality until < target_size
-        quality = 95
-        buffer = io.BytesIO()
-        img = img.convert("RGB")
-        while True:
-            buffer.seek(0)
-            buffer.truncate()
-            img.save(buffer, format="JPEG", quality=quality)
-            size = buffer.tell()
-            if size < target_size or quality < 30:
-                break
-            quality -= 5
-        with open(input_path, "wb") as f:
-            f.write(buffer.getvalue())
-        final_size = size
-        percent_reduced = 100 * (initial_size - final_size) / initial_size if initial_size > 0 else 0
-        print(f"\n📊 SIZE COMPARISON:")
-        print(f"  Before: {initial_size/1024/1024:.2f} MB ({initial_size:,} bytes)")
-        print(f"  After:  {final_size/1024/1024:.2f} MB ({final_size:,} bytes)")
-        print(f"  Reduced: {percent_reduced:.1f}% (Saved {(initial_size - final_size)/1024/1024:.2f} MB)\n")
-        return final_size
-
-    def file_hash(path):
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                h.update(chunk)
-        return h.hexdigest()
+    gcs_path = (
+        f"{gcs_folder_prefix}screenshots/{filename}"
+        if gcs_folder_prefix
+        else f"screenshots/{filename}"
+    )
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page(viewport={'width': 1920, 'height': 1080})
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu"],
+            )
 
-            if is_notion:
-                page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            else:
-                page.goto(url, wait_until="networkidle", timeout=60000)
+            page = browser.new_page(
+                viewport={"width": 1920, "height": 1080},
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0 Safari/537.36"
+                ),
+            )
 
-            scroll_to_bottom(page)
-            wait_for_full_load(page)
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            except PlaywrightTimeout:
+                print("⚠️ Navigation timeout — continuing.")
 
-            page.screenshot(path=screenshot_path, full_page=True)
+            # Controlled scrolling
+            for _ in range(10):
+                page.mouse.wheel(0, 3000)
+                page.wait_for_timeout(600)
+
+            page.wait_for_timeout(1000)
+
+            # Cap page height (critical)
+            page_height = page.evaluate(
+                "() => Math.min(document.body.scrollHeight, 20000)"
+            )
+            page.set_viewport_size({"width": 1920, "height": page_height})
+
+            try:
+                page.screenshot(
+                    path=screenshot_path,
+                    type="jpeg",
+                    quality=90,   # intentionally high before compression
+                    full_page=True,
+                    timeout=20000,
+                )
+            except PlaywrightTimeout:
+                print("⚠️ Full-page failed — fallback to tall viewport.")
+                page.screenshot(
+                    path=screenshot_path,
+                    type="jpeg",
+                    quality=85,
+                    full_page=False,
+                )
+
             browser.close()
 
-        # Compress to <3MB
-        final_size = compress_image_to_target_size(screenshot_path)
-        print(f"🖼️ Screenshot size after compression: {final_size/1024/1024:.2f} MB")
+        # ---- Compression + size logs ----
+        compress_image(screenshot_path)
 
-        # Check if screenshot already exists in GCS
+        # ---- GCS deduplication ----
+        bucket = get_bucket()
         blob = bucket.blob(gcs_path)
+
         if blob.exists():
-            # Download existing screenshot
             tmp_old = screenshot_path + ".old"
             download_file_from_gcs(gcs_path, tmp_old)
-            old_hash = file_hash(tmp_old)
-            new_hash = file_hash(screenshot_path)
-            if old_hash == new_hash:
-                print("🟡 Screenshot already exists and is identical. Keeping one copy.")
+
+            if file_hash(tmp_old) == file_hash(screenshot_path):
                 os.remove(screenshot_path)
-                return upload_file_to_gcs(tmp_old, gcs_path)
-            else:
-                print("🟠 Screenshot exists but is different. Replacing with latest.")
-                upload_file_to_gcs(screenshot_path, gcs_path)
                 os.remove(tmp_old)
-                return upload_file_to_gcs(screenshot_path, gcs_path)
-        else:
-            # Upload new screenshot
-            url = upload_file_to_gcs(screenshot_path, gcs_path)
-            print(f"✅ Screenshot uploaded to GCS: {url}")
-            return url
+                print("🟡 Screenshot unchanged — reused existing.")
+                return blob.public_url
+            else:
+                os.remove(tmp_old)
+
+        url = upload_file_to_gcs(screenshot_path, gcs_path)
+        print(f"✅ Screenshot uploaded to GCS: {url}")
+        return url
 
     except Exception as e:
-        print(f"⚠️ Primary screenshot failed: {e}")
-        # FALLBACK
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page(viewport={'width': 1280, 'height': 720})
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                scroll_to_bottom(page)
-                wait_for_full_load(page)
-                page.screenshot(path=screenshot_path, full_page=True)
-                browser.close()
-            final_size = compress_image_to_target_size(screenshot_path)
-            print(f"🖼️ Screenshot size after compression: {final_size/1024/1024:.2f} MB (fallback)")
-            url = upload_file_to_gcs(screenshot_path, gcs_path)
-            print(f"✅ Screenshot uploaded to GCS (fallback): {url}")
-            return url
-        except Exception as e2:
-            print(f"❌ Fallback screenshot failed: {e2}")
-            return None
+        print(f"❌ Screenshot failed safely: {e}")
+        return None

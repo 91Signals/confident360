@@ -9,7 +9,15 @@
         "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
       },
       {
-        "source": "/analyze/status/**",
+        "source": "/analyze/**",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "/api/status/**",
+        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
+      },
+      {
+        "source": "/api/**",
         "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
       },
       {
@@ -19,18 +27,6 @@
       {
         "source": "/reports/**",
         "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
-      },
-      {
-        "source": "/reports/screenshots/**",
-        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
-      },
-      {
-        "source": "/api/**",
-        "run": { "serviceId": "portfolio-backend", "region": "us-central1" }
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
       }
     ]
   }
