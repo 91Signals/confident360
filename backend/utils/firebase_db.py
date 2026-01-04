@@ -67,13 +67,17 @@ def save_user_profile(user_id: str, portfolio_url: str, resume_data: Dict) -> bo
             return False
     
     try:
+        raw_name = (resume_data or {}).get('name')
+        name = None
+        if raw_name and '@' not in str(raw_name):
+            name = raw_name
         profile_data = {
             'userId': user_id,
             'portfolioUrl': portfolio_url,
-            'name': resume_data.get('name'),
-            'email': resume_data.get('email'),
-            'phone': resume_data.get('phone'),
-            'linkedinUrl': resume_data.get('linkedin_url'),
+            'name': name,
+            'email': (resume_data or {}).get('email'),
+            'phone': (resume_data or {}).get('phone'),
+            'linkedinUrl': (resume_data or {}).get('linkedin_url'),
             'updatedAt': datetime.now().isoformat(),
             'createdAt': datetime.now().isoformat()
         }

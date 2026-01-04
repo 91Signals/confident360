@@ -45,6 +45,28 @@ def get_storage_client():
 app = Flask(__name__)
 CORS(app)
 
+
+def _extract_display_name(resume_data, user_name):
+    """Pick a human name, avoiding emails as fallback."""
+    candidates = []
+    if isinstance(resume_data, dict):
+        candidates.extend([
+            resume_data.get("name"),
+            resume_data.get("full_name"),
+            resume_data.get("fullName"),
+            (resume_data.get("personal_info") or {}).get("name"),
+        ])
+    candidates.append(user_name)
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if "@" in str(candidate):
+            continue
+        if any(ch.isalpha() for ch in str(candidate)):
+            return str(candidate).strip()
+    return "Designer"
+
 # ---------------------------------------
 # ROUTES (STATIC)
 # ---------------------------------------
@@ -84,16 +106,15 @@ def analyze():
 
     # Parse resume just for display name
     resume_data = parse_resume(resume_path)
-    display_name = (
-        (resume_data or {}).get("name")
-        or (resume_data or {}).get("full_name")
-        or user_name
-        or "Designer"
-    )
+    display_name = _extract_display_name(resume_data, user_name)
+
+    # Ensure profile write receives a clean name
+    profile_resume = dict(resume_data or {})
+    profile_resume["name"] = display_name
 
     # Save profile if logged in (non-blocking firestore write)
     if user_id:
-        save_user_profile(user_id, portfolio_url, resume_data)
+        save_user_profile(user_id, portfolio_url, profile_resume)
 
     # Upload resume to GCS (quick)
     gcs_pdf_url = upload_file_to_gcs(resume_path, gcs_folder + safe_name)
