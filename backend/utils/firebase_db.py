@@ -372,20 +372,35 @@ def save_time_report(report_id: str, timings: Dict, gcs_url: str) -> bool:
         return False
 
 
-def save_screenshot_record(report_id: str, project_url: str, screenshot_url: str, filename: Optional[str] = None) -> bool:
-    """Save a screenshot record under 'screenshots' subcollection."""
+def save_screenshot_record(report_id: str, project_url: str, screenshot_url: str, filename: Optional[str] = None, user_id: Optional[str] = None) -> bool:
+    """Save a screenshot record under 'screenshots' and mirror to user doc."""
     client = _get_db()
     if not client:
         return False
     try:
         coll = client.collection('analysis_jobs').document(report_id).collection('screenshots')
         doc_ref = coll.document()
-        doc_ref.set({
+        payload = {
             'projectUrl': project_url,
             'screenshotUrl': screenshot_url,
             'fileName': filename,
             'savedAt': datetime.now().isoformat(),
-        })
+        }
+        doc_ref.set(payload)
+
+        if user_id:
+            user_doc = _get_user_doc(user_id)
+            if user_doc:
+                shot_ref = user_doc.collection('screenshots').document()
+                shot_ref.set({
+                    **payload,
+                    'storageId': report_id,
+                })
+                user_doc.set({
+                    'userId': user_id,
+                    'storageId': report_id,
+                    'updatedAt': datetime.now().isoformat(),
+                }, merge=True)
         return True
     except Exception as e:
         print(f"[ERROR] Failed to save screenshot record for job {report_id}: {e}")

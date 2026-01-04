@@ -208,7 +208,7 @@ def analyze_projects(project_links, parent_url, gcs_folder, report_id=None, user
                     import urllib.parse as _u
                     _parsed = _u.urlparse(screenshot_path)
                     filename = _parsed.path.split('/')[-1]
-                    save_screenshot_record(report_id, link, screenshot_path, filename)
+                    save_screenshot_record(report_id, link, screenshot_path, filename, user_id)
                   except Exception as _:
                     pass
               else:
