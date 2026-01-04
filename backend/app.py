@@ -100,7 +100,7 @@ def analyze():
 
     # Save resume record in DB
     try:
-        save_analysis_resume(report_id, safe_name, gcs_pdf_url, resume_data)
+        save_analysis_resume(report_id, safe_name, gcs_pdf_url, resume_data, user_id)
     except Exception as _:
         pass
 
@@ -128,6 +128,7 @@ def analyze():
                 portfolio_url,
                 resume_path=resume_path,
                 report_id=report_id,
+                user_id=user_id,
             )
 
             projects_found = len(result.get("project_links", []) or [])

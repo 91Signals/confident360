@@ -257,8 +257,27 @@ def _get_db():
     return db
 
 
-def save_analysis_resume(report_id: str, file_name: str, gcs_url: str, parsed_resume: Optional[Dict]) -> bool:
-    """Attach resume info to analysis job document."""
+def _get_user_doc(user_id: str):
+    """Return (and lazily create) the user document handle."""
+    client = _get_db()
+    if not client or not user_id:
+        return None
+    try:
+        doc_ref = client.collection('user').document(user_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            doc_ref.set({
+                'userId': user_id,
+                'createdAt': datetime.now().isoformat(),
+            }, merge=True)
+        return doc_ref
+    except Exception as e:
+        print(f"[ERROR] Failed to access user document for {user_id}: {e}")
+        return None
+
+
+def save_analysis_resume(report_id: str, file_name: str, gcs_url: str, parsed_resume: Optional[Dict], user_id: Optional[str] = None) -> bool:
+    """Attach resume info to analysis job document and mirror to user doc."""
     client = _get_db()
     if not client:
         return False
@@ -274,14 +293,29 @@ def save_analysis_resume(report_id: str, file_name: str, gcs_url: str, parsed_re
             'updatedAt': datetime.now().isoformat()
         }, merge=True)
         print(f"[INFO] Resume saved for job {report_id}")
+
+        if user_id:
+            user_doc = _get_user_doc(user_id)
+            if user_doc:
+                user_doc.set({
+                    'userId': user_id,
+                    'storageId': report_id,
+                    'resume': {
+                        'fileName': file_name,
+                        'gcsUrl': gcs_url,
+                        'parsed': parsed_resume or {},
+                        'savedAt': datetime.now().isoformat(),
+                    },
+                    'updatedAt': datetime.now().isoformat(),
+                }, merge=True)
         return True
     except Exception as e:
         print(f"[ERROR] Failed to save resume for job {report_id}: {e}")
         return False
 
 
-def save_portfolio_main_json(report_id: str, portfolio_json: Dict, gcs_url: str) -> bool:
-    """Save main portfolio JSON (compact) and its GCS URL under subcollection 'portfolio'."""
+def save_portfolio_main_json(report_id: str, portfolio_json: Dict, gcs_url: str, user_id: Optional[str] = None) -> bool:
+    """Save main portfolio JSON (compact) under analysis job + user doc."""
     client = _get_db()
     if not client:
         return False
@@ -296,6 +330,23 @@ def save_portfolio_main_json(report_id: str, portfolio_json: Dict, gcs_url: str)
         }
         doc_ref.set(data, merge=True)
         print(f"[INFO] Main portfolio JSON saved in DB for job {report_id}")
+
+        if user_id:
+            user_doc = _get_user_doc(user_id)
+            if user_doc:
+                user_portfolio = user_doc.collection('portfolio').document('main')
+                user_portfolio.set({
+                    'storageId': report_id,
+                    'gcsUrl': gcs_url,
+                    'url': portfolio_json.get('url'),
+                    'json': portfolio_json,
+                    'savedAt': datetime.now().isoformat(),
+                }, merge=True)
+                user_doc.set({
+                    'userId': user_id,
+                    'storageId': report_id,
+                    'updatedAt': datetime.now().isoformat(),
+                }, merge=True)
         return True
     except Exception as e:
         print(f"[ERROR] Failed to save portfolio JSON for job {report_id}: {e}")
@@ -341,8 +392,8 @@ def save_screenshot_record(report_id: str, project_url: str, screenshot_url: str
         return False
 
 
-def save_project_json(report_id: str, project_url: str, project_json: Dict, gcs_url: str, screenshot_url: Optional[str] = None) -> bool:
-    """Save per-project JSON and metadata under 'projects' subcollection."""
+def save_project_json(report_id: str, project_url: str, project_json: Dict, gcs_url: str, screenshot_url: Optional[str] = None, user_id: Optional[str] = None) -> bool:
+    """Save per-project JSON and metadata under 'projects' and user doc."""
     client = _get_db()
     if not client:
         return False
@@ -383,6 +434,25 @@ def save_project_json(report_id: str, project_url: str, project_json: Dict, gcs_
         doc_ref = client.collection('analysis_jobs').document(report_id).collection('projects').document(doc_id)
         doc_ref.set(data, merge=True)
         print(f"[INFO] Project saved in DB for job {report_id}: {project_url}")
+
+        if user_id:
+            user_doc = _get_user_doc(user_id)
+            if user_doc:
+                user_project = user_doc.collection('case_studies').document(doc_id)
+                user_project.set({
+                    'storageId': report_id,
+                    'url': project_url,
+                    'gcsUrl': gcs_url,
+                    'screenshotUrl': screenshot_url,
+                    'title': data.get('title'),
+                    'json': project_json,
+                    'savedAt': datetime.now().isoformat(),
+                }, merge=True)
+                user_doc.set({
+                    'userId': user_id,
+                    'storageId': report_id,
+                    'updatedAt': datetime.now().isoformat(),
+                }, merge=True)
         return True
     except Exception as e:
         print(f"[ERROR] Failed to save project for job {report_id}: {e}")

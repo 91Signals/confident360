@@ -116,7 +116,7 @@ def scrape_designfolio_with_context(project_url, portfolio_url):
         }
 
 
-def analyze_projects(project_links, parent_url, gcs_folder, report_id=None):
+def analyze_projects(project_links, parent_url, gcs_folder, report_id=None, user_id=None):
     """
     Analyzes each project page using:
       - HTML scraping
@@ -566,7 +566,7 @@ Use EXACTLY this structure:
             # Save project JSON in DB
             if report_id:
               try:
-                save_project_json(report_id, link, report, gcs_url, screenshot_path)
+                save_project_json(report_id, link, report, gcs_url, screenshot_path, user_id)
               except Exception as _:
                 pass
             

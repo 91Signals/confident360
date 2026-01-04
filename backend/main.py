@@ -6,7 +6,7 @@ and runs the complete analysis pipeline without input() or prints.
 
 from main_page import process_main_url
 
-def run_analysis_from_flask(url, resume_path=None, report_id=None):
+def run_analysis_from_flask(url, resume_path=None, report_id=None, user_id=None):
     """
     This function replaces the old CLI workflow.
     
@@ -14,6 +14,7 @@ def run_analysis_from_flask(url, resume_path=None, report_id=None):
         url (str): Portfolio URL given by Flask
         resume_path (str): Path to uploaded resume (optional)
         report_id (str): UUID for GCS folder
+        user_id (str): Firebase user ID (optional)
     
     Returns:
         dict: result of processing, same structure as before
@@ -27,7 +28,7 @@ def run_analysis_from_flask(url, resume_path=None, report_id=None):
     # For example — if Gemini API uses the resume for context:
     # result = process_main_url(url, resume_path=resume_path)
 
-    result = process_main_url(url, report_id)
+    result = process_main_url(url, report_id, user_id=user_id)
 
     return result
 

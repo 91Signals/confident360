@@ -29,7 +29,7 @@ def identify_platform(url):
         return "other"
 
 
-def process_main_url(url, report_id=None):
+def process_main_url(url, report_id=None, user_id=None):
     """
     Main processing function:
     - Identify platform
@@ -62,7 +62,7 @@ def process_main_url(url, report_id=None):
 
     # Call final.py (your main orchestrator)
     print("📥 Extracting portfolio data...")
-    result = extract_portfolio(url, platform, report_id)
+    result = extract_portfolio(url, platform, report_id, user_id=user_id)
 
     # result must now return:
     # {

@@ -21,7 +21,7 @@ def get_clean_filename(url):
     return domain or "portfolio"
 
 
-def extract_portfolio(url, platform, report_id=None):
+def extract_portfolio(url, platform, report_id=None, user_id=None):
     """
     Scrape portfolio → Send to Gemini → Save portfolio JSON → Extract project links → Analyze each project
 
@@ -199,7 +199,7 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     # Save main report in DB
     if report_id:
       try:
-        save_portfolio_main_json(report_id, portfolio_report, gcs_main_url)
+        save_portfolio_main_json(report_id, portfolio_report, gcs_main_url, user_id)
       except Exception as _:
         pass
 
@@ -247,7 +247,7 @@ Return ONLY valid JSON (no markdown, no descriptions). Use EXACTLY this format:
     if project_links:
         print("📊 Analyzing individual projects...\n")
         projects_start = time.perf_counter()
-        project_reports_count, project_timings = casestudies.analyze_projects(project_links, url, gcs_folder, report_id=report_id)
+        project_reports_count, project_timings = casestudies.analyze_projects(project_links, url, gcs_folder, report_id=report_id, user_id=user_id)
         timings['total_project_analysis_seconds'] = round(time.perf_counter() - projects_start, 2)
         timings['projects_analyzed'] = project_reports_count
         timings['per_project_timings'] = project_timings
